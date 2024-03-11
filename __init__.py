@@ -14,7 +14,7 @@ bl_info = {
 import bpy
 import urllib.request
 import os
-import time
+from pathlib import Path
 
 class ReadyPlayerMeImporter(bpy.types.Operator):
     """Import a ReadyPlayerMe model"""
@@ -105,9 +105,20 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
                     sk.relative_key = act_sk
 
     def download_and_import_model(self, context):
-        # Ensure the directory for storing downloaded models exists
-        dir_path = os.path.join(os.path.dirname(bpy.path.abspath(bpy.data.filepath)), "gltf-DL")
-        os.makedirs(dir_path, exist_ok=True)
+        # First, try the original directory for storing downloaded models
+        original_dir_path = os.path.join(os.path.dirname(bpy.path.abspath(bpy.data.filepath)), "gltf-DL")
+        
+        # Fallback directory in the user's Downloads directory
+        downloads_path = str(Path.home() / "Downloads")
+        fallback_dir_path = os.path.join(downloads_path, "gltf-DL")
+        
+        try:
+            os.makedirs(original_dir_path, exist_ok=True)
+            dir_path = original_dir_path
+        except PermissionError:
+            print("Permission denied for original directory, using fallback directory in Downloads.")
+            os.makedirs(fallback_dir_path, exist_ok=True)
+            dir_path = fallback_dir_path
 
         # Construct the URL based on user input
         model_url = self.model_url
@@ -143,6 +154,8 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
         # armature is the only armature in the selected objects
         armatures = [obj for obj in bpy.context.selected_objects if obj.type == 'ARMATURE']
         armature = armatures[0] if armatures else None
+        armature.data.show_bone_custom_shapes = False
+
 
         child_meshes = [obj for obj in armature.children if obj.type == 'MESH']
         
