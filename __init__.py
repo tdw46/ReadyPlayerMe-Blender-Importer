@@ -4,7 +4,7 @@ bl_info = {
     "category": "Import-Export",
     "description": "Import ReadyPlayerMe models into Blender",
     "author": "BeyondDev (Tyler Walker)",
-    "version": (2, 0, 4),
+    "version": (2, 0, 6),
     "location": "File > Import > ReadyPlayerMe Import",
     "warning": "",
     "doc_url": "",
@@ -24,9 +24,6 @@ import tempfile
 import shutil
 from bpy.utils import previews
 import time
-
-SUBDOMAIN = 'beyond-rpm-downloader'
-CREATOR_URL = f'https://{SUBDOMAIN}.readyplayer.me/avatar'
 
 def _find_system_python_command():
     candidates = []
@@ -58,27 +55,6 @@ def _is_pywebview_available():
 def _prefs_file_path():
     return os.path.join(os.path.dirname(__file__), 'rpm_prefs.json')
 
-def _save_prefs_to_disk(prefs):
-    try:
-        path = _prefs_file_path()
-        # Save avatar items as well
-        avatar_list = []
-        for item in prefs.avatar_items:
-            avatar_list.append({
-                'glb_url': item.glb_url,
-                'thumb_url': item.thumb_url,
-                'avatar_id': item.avatar_id
-            })
-        
-        data = {
-            'email': prefs.login_email or '',
-            'password': prefs.login_password or '',
-            'avatar_items': avatar_list
-        }
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f)
-    except Exception as e:
-        print('RPM: failed to save prefs to disk', e)
 
 def _load_prefs_from_disk():
     try:
@@ -488,10 +464,6 @@ def _get_preview_icon(thumb_url, key):
 class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
 
-    last_user_id: bpy.props.StringProperty(
-        name="Last Authorized User ID",
-        default=""
-    )
     scraped_avatars_json: bpy.props.StringProperty(
         name="Scraped Avatars JSON",
         default=""
@@ -513,9 +485,6 @@ class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
-        col = layout.column(align=True)
-        col.label(text=f"Partner Subdomain: {SUBDOMAIN}")
-        col.label(text=f"Last Authorized User ID: {self.last_user_id or '(none)'}")
         wm = context.window_manager
         installed = _is_pywebview_available()
         deps = layout.box()
