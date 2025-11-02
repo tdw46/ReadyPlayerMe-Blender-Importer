@@ -4,7 +4,7 @@ bl_info = {
     "category": "Import-Export",
     "description": "Import ReadyPlayerMe models into Blender",
     "author": "BeyondDev (Tyler Walker)",
-    "version": (2, 0, 3),
+    "version": (2, 0, 4),
     "location": "File > Import > ReadyPlayerMe Import",
     "warning": "",
     "doc_url": "",
@@ -125,9 +125,9 @@ preview_col = None
 
 class RPM_OT_OpenUIWebview(bpy.types.Operator):
     """Open Ready Player Me UI in webview"""
-    bl_idname = "readyplayerme.open_ui_webview"
-    bl_label = "Ready Player Me Importer"
-    bl_options = {'REGISTER'}
+    bl_idname = "rpm.webviewui"
+    bl_label = "RPM WebviewUI"
+    bl_options = {'REGISTER', 'INTERNAL'}
     
     _timer = None
     _webview_process = None
@@ -152,7 +152,7 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
                     # Trigger import
                     url = options.get('url', '')
                     if url:
-                        bpy.ops.import_scene.readyplayerme_importer(
+                        bpy.ops.rpm.native_import(
                             'EXEC_DEFAULT',
                             model_url=url,
                             quality=options.get('quality', 'low'),
@@ -245,10 +245,10 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
         print("RPM: UI webview closed")
 
 class ReadyPlayerMeImporter(bpy.types.Operator):
-    """Import a ReadyPlayerMe model"""
-    bl_idname = "import_scene.readyplayerme_importer"
-    bl_label = "Import ReadyPlayerMe Model"
-    bl_options = {'REGISTER', 'UNDO'}
+    """RPM Native Import"""
+    bl_idname = "rpm.native_import"
+    bl_label = "RPM Native Import"
+    bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
 
     model_url: bpy.props.StringProperty(
         name="Model URL",
