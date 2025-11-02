@@ -4,7 +4,7 @@ bl_info = {
     "category": "Import-Export",
     "description": "Import ReadyPlayerMe models into Blender",
     "author": "BeyondDev (Tyler Walker)",
-    "version": (2, 0, 2),
+    "version": (2, 0, 3),
     "location": "File > Import > ReadyPlayerMe Import",
     "warning": "",
     "doc_url": "",
@@ -303,97 +303,11 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
         default='1024'
     )
 
-    def invoke(self, context, event):
-        wm = context.window_manager
-        return wm.invoke_props_dialog(self, width=500)
-
     def execute(self, context):
-        # Only execute if model_url is provided (from URL import)
+        # Only execute if model_url is provided
         if self.model_url:
             return self.download_and_import_model(context)
         return {'FINISHED'}
-    
-    def draw(self, context):
-        layout = self.layout
-        
-        # Top section: Refresh button and URL input
-        _installed = _is_pywebview_available()
-        if _installed:
-            layout.operator(RPM_OT_OpenMyAvatars.bl_idname, text="Refresh My Avatars List", icon='FILE_REFRESH')
-        else:
-            box = layout.box()
-            box.label(text="pywebview not installed. Install in Add-on Preferences.", icon='ERROR')
-        
-        layout.separator()
-        layout.prop(self, 'model_url', text="Or Import from URL")
-        
-        layout.separator()
-        
-        # Import options section
-        opt = layout.box()
-        opt.label(text="Import Options", icon='PREFERENCES')
-        opt.prop(self, 'quality')
-        opt.prop(self, 't_pose')
-        opt.prop(self, 'arkit_shapes')
-        opt.prop(self, 'enable_texture_atlas')
-        if self.enable_texture_atlas:
-            opt.prop(self, 'texture_atlas_size')
-        
-        layout.separator()
-        
-        # Avatar grid from persistent collection
-        try:
-            prefs = bpy.context.preferences.addons[__name__].preferences
-            items = list(prefs.avatar_items)
-        except Exception:
-            items = []
-        
-        if items:
-            layout.label(text="My Avatars:", icon='COMMUNITY')
-            # Use row with splits to ensure consistent column widths
-            for i in range(0, len(items), 3):
-                row = layout.row(align=True)
-                # Create 3 equal columns using split
-                col1 = row.column(align=True)
-                col2 = row.column(align=True)
-                col3 = row.column(align=True)
-                
-                columns = [col1, col2, col3]
-                
-                for j in range(3):
-                    if i + j < len(items):
-                        it = items[i + j]
-                        glb = it.glb_url
-                        thumb = it.thumb_url
-                        aid = it.avatar_id
-                        
-                        # Create a box for each avatar
-                        box = columns[j].box()
-                        col = box.column(align=True)
-                        
-                        # Try to display thumbnail using template_icon
-                        if thumb:
-                            img = _get_or_load_image(thumb, aid)
-                            if img and hasattr(img, 'preview') and img.preview:
-                                try:
-                                    col.template_icon(icon_value=img.preview.icon_id, scale=6.0)
-                                except Exception as e:
-                                    print(f'RPM: template_icon error: {e}')
-                                    col.label(text="", icon='ARMATURE_DATA')
-                            else:
-                                col.label(text="", icon='ARMATURE_DATA')
-                        else:
-                            col.label(text="", icon='ARMATURE_DATA')
-                        
-                        # Add download button below thumbnail with icon and tooltip
-                        op = col.operator(RPM_OT_ImportAvatarURL.bl_idname, text="Download", icon='IMPORT')
-                        op.url = glb
-                        op.avatar_id_display = aid  # For tooltip
-                        op.quality = self.quality
-                        op.t_pose = self.t_pose
-                        op.arkit_shapes = self.arkit_shapes
-                        op.enable_texture_atlas = self.enable_texture_atlas
-                        op.texture_atlas_size = self.texture_atlas_size
     
     def apply_pose_as_basis(context, aobj=None):
         if aobj is None:
@@ -514,8 +428,6 @@ def register():
     bpy.utils.register_class(ReadyPlayerMeImporter)
     bpy.utils.register_class(ReadyPlayerMePreferences)
     bpy.utils.register_class(RPM_OT_InstallDependenciesModal)
-    bpy.utils.register_class(RPM_OT_OpenMyAvatars)
-    bpy.utils.register_class(RPM_OT_ImportAvatarURL)
     PYWEBVIEW_OK = _is_pywebview_available()
     bpy.types.WindowManager.rpm_dep_install_running = bpy.props.BoolProperty(default=False)
     bpy.types.WindowManager.rpm_dep_install_msg = bpy.props.StringProperty(default="")
@@ -529,9 +441,7 @@ def register():
 
 def unregister():
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
-    bpy.utils.unregister_class(RPM_OT_OpenMyAvatars)
     bpy.utils.unregister_class(RPM_OT_InstallDependenciesModal)
-    bpy.utils.unregister_class(RPM_OT_ImportAvatarURL)
     bpy.utils.unregister_class(ReadyPlayerMePreferences)
     bpy.utils.unregister_class(ReadyPlayerMeImporter)
     bpy.utils.unregister_class(RPM_OT_OpenUIWebview)
@@ -574,61 +484,6 @@ def _get_preview_icon(thumb_url, key):
         print('RPM: preview load error', e)
         return 0
 
-def _get_or_load_image(thumb_url, key):
-    """Load thumbnail into bpy.data.images and return the image object"""
-    try:
-        # Use a safe filename/identifier
-        safe_key = key.replace('-', '_')[:20]
-        img_identifier = f"rpm_thumb_{safe_key}"
-        
-        # First check if already loaded in Blender (packed or not)
-        for img in bpy.data.images:
-            # Check by name pattern or filepath containing our identifier
-            if img_identifier in img.name or (img.filepath and safe_key in img.filepath):
-                # Found it! Just ensure preview exists
-                if not img.preview:
-                    img.preview_ensure()
-                return img
-        
-        # Not loaded yet - need to download, load, pack, and delete
-        addon_dir = os.path.dirname(__file__)
-        thumbs_dir = os.path.join(addon_dir, 'thumbnail_cache')
-        os.makedirs(thumbs_dir, exist_ok=True)
-        
-        clean = thumb_url.split('?')[0]
-        ext = os.path.splitext(clean)[1] or '.png'
-        thumb_filename = f"rpm_{safe_key}{ext}"
-        thumb_path = os.path.join(thumbs_dir, thumb_filename)
-        
-        # Download if not cached
-        if not os.path.exists(thumb_path):
-            urllib.request.urlretrieve(thumb_url, thumb_path)
-        
-        # Load into Blender
-        img = bpy.data.images.load(thumb_path, check_existing=True)
-        if img:
-            # Set a consistent name for easier lookup later
-            try:
-                img.name = img_identifier
-            except:
-                pass  # Name setting might fail in some contexts
-            
-            # Generate preview
-            img.preview_ensure()
-            
-            # Pack immediately
-            img.pack()
-            
-            # Delete from disk immediately
-            try:
-                os.remove(thumb_path)
-            except:
-                pass  # Don't block if delete fails
-        
-        return img
-    except Exception as e:
-        print(f'RPM: image load error: {e}')
-        return None
 
 class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -748,277 +603,7 @@ class RPM_OT_InstallDependenciesModal(bpy.types.Operator):
                 return {'CANCELLED'}
         return {'PASS_THROUGH'}
 
-class RPM_OT_OpenMyAvatars(bpy.types.Operator):
-    bl_idname = "readyplayerme.open_my_avatars"
-    bl_label = "Open My Avatars"
-    bl_options = {'REGISTER'}
 
-    def execute(self, context):
-        print(f"RPM: OpenMyAvatars.execute entered. PYWEBVIEW_OK={PYWEBVIEW_OK}")
-        _installed_now = _is_pywebview_available()
-        print(f"RPM: pywebview available now? {_installed_now}")
-        if not _installed_now:
-            self.report({'ERROR'}, "pywebview is not installed in system Python. Install it in Add-on Preferences.")
-            return {'CANCELLED'}
-
-        prefs = bpy.context.preferences.addons[__name__].preferences
-        sub = SUBDOMAIN
-        print(f"RPM: Opening webview. PYWEBVIEW_OK={PYWEBVIEW_OK}, subdomain={sub}")
-
-        out_fd, out_path = tempfile.mkstemp(prefix='rpm_out_', suffix='.json')
-        os.close(out_fd)
-        
-        # Get the path to the JS injection file
-        inject_js_path = os.path.join(os.path.dirname(__file__), 'rpm_inject.js')
-        print(f"RPM: JS injection file path: {inject_js_path}")
-        
-        if not os.path.exists(inject_js_path):
-            self.report({'ERROR'}, f"JS injection file not found: {inject_js_path}")
-            return {'CANCELLED'}
-        
-        # Use the existing rpm_webview_helper.py file
-        script_path = os.path.join(os.path.dirname(__file__), 'rpm_webview_helper.py')
-        print(f"RPM: Helper script path: {script_path}")
-        print(f"RPM: Output path: {out_path}")
-        
-        if not os.path.exists(script_path):
-            self.report({'ERROR'}, f"Helper script not found: {script_path}")
-            return {'CANCELLED'}
-
-        cmd = _find_system_python_command()
-        if not cmd:
-            self.report({'ERROR'}, "No system Python found to run webview helper.")
-            try:
-                os.remove(out_path)
-            except Exception:
-                pass
-            return {'CANCELLED'}
-
-        print(f"RPM: system python command resolved to: {cmd}")
-        print(f"RPM: Launching helper: {cmd} -u {script_path}")
-        try:
-            _env = os.environ.copy()
-            try:
-                _em = (prefs.login_email or '')
-                _pw = (prefs.login_password or '')
-                if _em:
-                    _env['RPM_WV_EMAIL'] = _em
-                if _pw:
-                    _env['RPM_WV_PASSWORD'] = _pw
-                # Pass the JS file PATH instead of the content
-                _env['RPM_INJECT_JS_PATH'] = inject_js_path
-                _env['RPM_OUTPUT_PATH'] = out_path
-            except Exception as e:
-                print(f"RPM: Error setting environment variables: {e}")
-            
-            proc = subprocess.Popen([cmd, '-u', script_path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=_env)
-            def _reader(p):
-                try:
-                    for line in p.stdout:
-                        print("RPM helper:", line.rstrip())
-                except Exception as e:
-                    print("RPM helper reader error:", e)
-            threading.Thread(target=_reader, args=(proc,), daemon=True).start()
-            try:
-                print(f"RPM: helper process started pid={proc.pid}")
-            except Exception:
-                pass
-        except Exception as e:
-            self.report({'ERROR'}, f"Failed to launch webview helper: {e}")
-            try:
-                os.remove(out_path)
-            except Exception:
-                pass
-            return {'CANCELLED'}
-
-        rpm_poll_log = {'started': False, 'last': 0.0}
-
-        def poll():
-            try:
-                if os.path.exists(out_path):
-                    try:
-                        with open(out_path, 'r', encoding='utf-8') as f:
-                            raw_txt = f.read()
-                        data = json.loads(raw_txt)
-                    except Exception as e:
-                        return 1.5
-                    evt_type = data.get('type')
-                    url = data.get('url')
-                    uid = data.get('userId') or ''
-                    if evt_type == 'creds':
-                        try:
-                            p = bpy.context.preferences.addons[__name__].preferences
-                            em = (data.get('email') or '').strip()
-                            pw = data.get('password') or ''
-                            if em:
-                                p.login_email = em
-                            if pw:
-                                p.login_password = pw
-                            print("RPM: Saved credentials from Studio sign-in")
-                            try:
-                                _save_prefs_to_disk(p)
-                            except Exception:
-                                pass
-                            try:
-                                bpy.ops.wm.save_userpref()
-                            except Exception:
-                                pass
-                        except Exception:
-                            pass
-                        try:
-                            os.remove(out_path)
-                        except Exception:
-                            pass
-                        return 1.5
-                    if evt_type == 'list':
-                        try:
-                            p = bpy.context.preferences.addons[__name__].preferences
-                            p.scraped_avatars_json = json.dumps(data)
-                            
-                            # Store in persistent collection
-                            p.avatar_items.clear()
-                            items = data.get('items') or []
-                            for it in items:
-                                new_item = p.avatar_items.add()
-                                new_item.glb_url = it.get('glb') or ''
-                                new_item.thumb_url = it.get('thumb') or ''
-                                new_item.avatar_id = it.get('id') or ''
-                            
-                            print(f"RPM: Received and stored {len(items)} avatars")
-                            
-                            # Pre-load all thumbnails in batch (download, pack, delete)
-                            print(f"RPM: Pre-loading {len(items)} thumbnails...")
-                            for it in items:
-                                thumb = it.get('thumb') or ''
-                                aid = it.get('id') or ''
-                                if thumb and aid:
-                                    try:
-                                        _get_or_load_image(thumb, aid)
-                                    except Exception:
-                                        pass
-                            print(f"RPM: All thumbnails loaded and packed")
-                            
-                            # Save to disk for persistence
-                            try:
-                                _save_prefs_to_disk(p)
-                                print("RPM: Saved avatar data to disk")
-                            except Exception:
-                                pass
-                        except Exception as e:
-                            print(f"RPM: Error storing avatars: {e}")
-                        try:
-                            os.remove(out_path)
-                        except Exception:
-                            pass
-                        print("RPM: poll complete")
-                        return None
-                    if uid:
-                        try:
-                            p = bpy.context.preferences.addons[__name__].preferences
-                            p.last_user_id = uid
-                        except Exception:
-                            pass
-                    if url:
-                        print(f"RPM: Result found. Importing URL: {url}")
-                        bpy.ops.import_scene.readyplayerme_importer(model_url=url)
-                    try:
-                        os.remove(out_path)
-                    except Exception:
-                        pass
-                    if url:
-                        print("RPM: poll complete")
-                        return None
-                    else:
-                        return 1.5
-                else:
-                    try:
-                        p = None
-                        try:
-                            p = proc
-                        except Exception:
-                            p = None
-                        if p is not None:
-                            try:
-                                if p.poll() is not None:
-                                    try:
-                                        print(f"RPM: helper process {p.pid} exited; stopping poll")
-                                    except Exception:
-                                        pass
-                                    return None
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                    if not rpm_poll_log['started']:
-                        print("RPM: poll started (1.5s interval)")
-                        rpm_poll_log['started'] = True
-            except Exception:
-                try:
-                    os.remove(out_path)
-                except Exception:
-                    pass
-                print("RPM: poll stopped due to error")
-                return None
-            return 1.5
-
-        try:
-            bpy.app.timers.register(poll)
-            print("RPM: poll timer registered")
-        except Exception as e:
-            print("RPM: failed to register poll timer", e)
-            return {'CANCELLED'}
-        return {'FINISHED'}
-
-class RPM_OT_ImportAvatarURL(bpy.types.Operator):
-    bl_idname = "readyplayerme.import_avatar_url"
-    bl_label = "Import RPM Avatar by URL"
-    bl_options = {'REGISTER', 'UNDO'}
-    
-    url: bpy.props.StringProperty(default="")
-    avatar_id_display: bpy.props.StringProperty(default="")  # For tooltip/description
-    quality: bpy.props.EnumProperty(
-        items=[('high','High',''),('medium','Medium',''),('low','Low','')],
-        default='low'
-    )
-    t_pose: bpy.props.BoolProperty(default=True)
-    arkit_shapes: bpy.props.BoolProperty(default=True)
-    enable_texture_atlas: bpy.props.BoolProperty(default=True)
-    texture_atlas_size: bpy.props.EnumProperty(
-        items=[('none','None',''),('256','256',''),('512','512',''),('1024','1024','')],
-        default='1024'
-    )
-    
-    @classmethod
-    def description(cls, context, properties):
-        aid = properties.avatar_id_display
-        if aid:
-            return f"Download model {aid}.glb"
-        return "Download Ready Player Me avatar"
-
-    def execute(self, context):
-        if not self.url:
-            self.report({'ERROR'}, "Missing URL")
-            return {'CANCELLED'}
-        
-        # Show which model is being downloaded
-        if self.avatar_id_display:
-            print(f"RPM: Downloading model {self.avatar_id_display}.glb")
-            self.report({'INFO'}, f"Downloading {self.avatar_id_display}.glb...")
-        
-        try:
-            bpy.ops.import_scene.readyplayerme_importer(
-                'EXEC_DEFAULT',
-                model_url=self.url,
-                quality=self.quality,
-                t_pose=self.t_pose,
-                arkit_shapes=self.arkit_shapes,
-                enable_texture_atlas=self.enable_texture_atlas,
-                texture_atlas_size=self.texture_atlas_size
-            )
-        except Exception as e:
-            self.report({'ERROR'}, f"Failed to import: {e}")
-            return {'CANCELLED'}
-        return {'FINISHED'}
 
 if __name__ == "__main__":
     register()
