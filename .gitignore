@@ -1,1 +1,11 @@
 .env
+
+# Python cache files
+*.pyc
+__pycache__/
+
+# Addon cache
+thumbnail_cache/
+rpm_prefs.json
+rpm_ui_defaults.json
+rpm_download_request.json
