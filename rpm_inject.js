@@ -7,7 +7,7 @@
     } catch(e) {}
   };
   
-  dbg('inject v1.0.44');
+  dbg('inject v1.0.46');
   
   function createOverlay() {
     try {
@@ -696,23 +696,23 @@
                                   } catch(err) {
                                     dbg('Subdomain submit error: ' + err);
                                   }
-                              }, 300);
+                              }, 150);
                             } catch(err) {
                               dbg('Subdomain password typing error: ' + err);
                             }
-                          }, 100);
+                          }, 50);
                         } catch(err) {
                           dbg('Subdomain password click error: ' + err);
                         }
-                      }, 200);
+                      }, 100);
                     } catch(err) {
                       dbg('Subdomain email typing error: ' + err);
                     }
-                  }, 100);
+                  }, 50);
               } catch(err) {
                 dbg('Subdomain email click error: ' + err);
               }
-            }, 200);
+            }, 100);
           }
         } catch(err) {
           dbg('onSubSignin inner error: ' + err);
@@ -851,25 +851,25 @@
                                         } catch(err) {
                                           dbg('Submit error: ' + err);
                                         }
-                                      }, 300);
+                                      }, 150);
                                     } catch(err) {
                                       dbg('Password typing error: ' + err);
                                     }
-                                  }, 100);
+                                  }, 50);
                                 }
                               } catch(err) {
                                 dbg('Password click error: ' + err);
                               }
-                            }, 200);
+                            }, 100);
                           } catch(err) {
                             dbg('Email typing error: ' + err);
                           }
-                        }, 100);
+                        }, 50);
                       }
                     } catch(err) {
                       dbg('Email click error: ' + err);
                     }
-                  }, 200);
+                  }, 100);
                 }
               } catch(err) {
                 dbg('autoStudio error: ' + err);
@@ -911,6 +911,12 @@
         if(list && list.length) {
           try {
             window.pywebview.api.on_list({type: 'list', items: list});
+            dbg('Avatar list sent, closing window in 1s...');
+            setTimeout(function() {
+              try {
+                window.pywebview.api.close_window();
+              } catch(__) {}
+            }, 1000);
           } catch(_) {}
           return;
         }
@@ -919,6 +925,12 @@
         if(list && list.length) {
           try {
             window.pywebview.api.on_list({type: 'list', items: list});
+            dbg('Avatar list sent, closing window in 1s...');
+            setTimeout(function() {
+              try {
+                window.pywebview.api.close_window();
+              } catch(__) {}
+            }, 1000);
           } catch(_) {}
           return;
         }

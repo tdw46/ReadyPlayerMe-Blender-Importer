@@ -4,7 +4,7 @@ bl_info = {
     "category": "Import-Export",
     "description": "Import ReadyPlayerMe models into Blender",
     "author": "BeyondDev (Tyler Walker)",
-    "version": (1, 0, 56),
+    "version": (1, 0, 64),
     "location": "File > Import > ReadyPlayerMe Import",
     "warning": "",
     "doc_url": "",
@@ -61,9 +61,19 @@ def _prefs_file_path():
 def _save_prefs_to_disk(prefs):
     try:
         path = _prefs_file_path()
+        # Save avatar items as well
+        avatar_list = []
+        for item in prefs.avatar_items:
+            avatar_list.append({
+                'glb_url': item.glb_url,
+                'thumb_url': item.thumb_url,
+                'avatar_id': item.avatar_id
+            })
+        
         data = {
             'email': prefs.login_email or '',
-            'password': prefs.login_password or ''
+            'password': prefs.login_password or '',
+            'avatar_items': avatar_list
         }
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f)
@@ -84,6 +94,17 @@ def _load_prefs_from_disk():
             p.login_email = em
         if pw:
             p.login_password = pw
+        
+        # Load avatar items
+        avatar_list = data.get('avatar_items') or []
+        p.avatar_items.clear()
+        for item_data in avatar_list:
+            new_item = p.avatar_items.add()
+            new_item.glb_url = item_data.get('glb_url') or ''
+            new_item.thumb_url = item_data.get('thumb_url') or ''
+            new_item.avatar_id = item_data.get('avatar_id') or ''
+        
+        print(f'RPM: Loaded {len(avatar_list)} avatars from disk')
     except Exception as e:
         print('RPM: failed to load prefs from disk', e)
 
@@ -114,12 +135,7 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
         default=""
     )
 
-    mode: bpy.props.EnumProperty(
-        name="Mode",
-        description="Choose import mode",
-        items=[('MY', "My Avatars", "Use web view to select from your RPM avatars"), ('URL', "From URL", "Import from a GLB URL")],
-        default='URL'
-    )
+    # Removed mode property - now using single unified tab
 
     quality_options = [
         ('high', "High", "High quality"),
@@ -168,62 +184,95 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
 
     def invoke(self, context, event):
         wm = context.window_manager
-        return wm.invoke_props_dialog(self)
+        return wm.invoke_props_dialog(self, width=500)
 
     def execute(self, context):
-        if self.mode == 'URL':
+        # Only execute if model_url is provided (from URL import)
+        if self.model_url:
             return self.download_and_import_model(context)
-        else:
-            return {'FINISHED'}
+        return {'FINISHED'}
     
     def draw(self, context):
         layout = self.layout
-        row = layout.row(align=True)
-        row.prop(self, 'mode', expand=True)
-        if self.mode == 'MY':
-            _installed = _is_pywebview_available()
-            if not _installed:
-                col = layout.column(align=True)
-                col.label(text="pywebview is not available. Install it in Add-on Preferences.")
-            else:
-                layout.operator(RPM_OT_OpenMyAvatars.bl_idname, text="Open My Avatars (Webview)")
-                opt = layout.box()
-                opt.label(text="Import Options")
-                opt.prop(self, 'quality')
-                opt.prop(self, 't_pose')
-                opt.prop(self, 'arkit_shapes')
-                opt.prop(self, 'enable_texture_atlas')
-                opt.prop(self, 'texture_atlas_size')
-                try:
-                    prefs = bpy.context.preferences.addons[__name__].preferences
-                    data = json.loads(prefs.scraped_avatars_json or '{}')
-                    items = data.get('items') or []
-                except Exception:
-                    items = []
-                if items:
-                    gf = layout.grid_flow(row_major=True, columns=3, even_columns=True, even_rows=True)
-                    for it in items:
-                        glb = (it.get('glb') or '')
-                        thumb = (it.get('thumb') or '')
-                        aid = (it.get('id') or '')
-                        icon_id = 0
+        
+        # Top section: Refresh button and URL input
+        _installed = _is_pywebview_available()
+        if _installed:
+            layout.operator(RPM_OT_OpenMyAvatars.bl_idname, text="Refresh My Avatars List", icon='FILE_REFRESH')
+        else:
+            box = layout.box()
+            box.label(text="pywebview not installed. Install in Add-on Preferences.", icon='ERROR')
+        
+        layout.separator()
+        layout.prop(self, 'model_url', text="Or Import from URL")
+        
+        layout.separator()
+        
+        # Import options section
+        opt = layout.box()
+        opt.label(text="Import Options", icon='PREFERENCES')
+        opt.prop(self, 'quality')
+        opt.prop(self, 't_pose')
+        opt.prop(self, 'arkit_shapes')
+        opt.prop(self, 'enable_texture_atlas')
+        if self.enable_texture_atlas:
+            opt.prop(self, 'texture_atlas_size')
+        
+        layout.separator()
+        
+        # Avatar grid from persistent collection
+        try:
+            prefs = bpy.context.preferences.addons[__name__].preferences
+            items = list(prefs.avatar_items)
+        except Exception:
+            items = []
+        
+        if items:
+            layout.label(text="My Avatars:", icon='COMMUNITY')
+            # Use row with splits to ensure consistent column widths
+            for i in range(0, len(items), 3):
+                row = layout.row(align=True)
+                # Create 3 equal columns using split
+                col1 = row.column(align=True)
+                col2 = row.column(align=True)
+                col3 = row.column(align=True)
+                
+                columns = [col1, col2, col3]
+                
+                for j in range(3):
+                    if i + j < len(items):
+                        it = items[i + j]
+                        glb = it.glb_url
+                        thumb = it.thumb_url
+                        aid = it.avatar_id
+                        
+                        # Create a box for each avatar
+                        box = columns[j].box()
+                        col = box.column(align=True)
+                        
+                        # Try to display thumbnail using template_icon
                         if thumb:
-                            icon_id = _get_preview_icon(thumb, aid)
-                        op = gf.operator(RPM_OT_ImportAvatarURL.bl_idname, text=aid[:12] or 'Import', icon_value=icon_id)
+                            img = _get_or_load_image(thumb, aid)
+                            if img and hasattr(img, 'preview') and img.preview:
+                                try:
+                                    col.template_icon(icon_value=img.preview.icon_id, scale=6.0)
+                                except Exception as e:
+                                    print(f'RPM: template_icon error: {e}')
+                                    col.label(text="", icon='ARMATURE_DATA')
+                            else:
+                                col.label(text="", icon='ARMATURE_DATA')
+                        else:
+                            col.label(text="", icon='ARMATURE_DATA')
+                        
+                        # Add download button below thumbnail with icon and tooltip
+                        op = col.operator(RPM_OT_ImportAvatarURL.bl_idname, text="Download", icon='IMPORT')
                         op.url = glb
+                        op.avatar_id_display = aid  # For tooltip
                         op.quality = self.quality
                         op.t_pose = self.t_pose
                         op.arkit_shapes = self.arkit_shapes
                         op.enable_texture_atlas = self.enable_texture_atlas
                         op.texture_atlas_size = self.texture_atlas_size
-        else:
-            layout.prop(self, 'model_url')
-            col = layout.column(align=True)
-            col.prop(self, 'quality')
-            col.prop(self, 't_pose')
-            col.prop(self, 'arkit_shapes')
-            col.prop(self, 'enable_texture_atlas')
-            col.prop(self, 'texture_atlas_size')
     
     def apply_pose_as_basis(context, aobj=None):
         if aobj is None:
@@ -339,6 +388,7 @@ def menu_func_import(self, context):
 
 def register():
     global PYWEBVIEW_OK
+    bpy.utils.register_class(RPM_AvatarItem)
     bpy.utils.register_class(ReadyPlayerMeImporter)
     bpy.utils.register_class(ReadyPlayerMePreferences)
     bpy.utils.register_class(RPM_OT_InstallDependenciesModal)
@@ -362,6 +412,7 @@ def unregister():
     bpy.utils.unregister_class(RPM_OT_ImportAvatarURL)
     bpy.utils.unregister_class(ReadyPlayerMePreferences)
     bpy.utils.unregister_class(ReadyPlayerMeImporter)
+    bpy.utils.unregister_class(RPM_AvatarItem)
     try:
         del bpy.types.WindowManager.rpm_dep_install_running
         del bpy.types.WindowManager.rpm_dep_install_msg
@@ -376,6 +427,11 @@ def unregister():
         pass
 
 rpm_event_queue = []
+
+class RPM_AvatarItem(bpy.types.PropertyGroup):
+    glb_url: bpy.props.StringProperty(name="GLB URL", default="")
+    thumb_url: bpy.props.StringProperty(name="Thumbnail URL", default="")
+    avatar_id: bpy.props.StringProperty(name="Avatar ID", default="")
 
 def _get_preview_icon(thumb_url, key):
     global preview_col
@@ -395,6 +451,62 @@ def _get_preview_icon(thumb_url, key):
         print('RPM: preview load error', e)
         return 0
 
+def _get_or_load_image(thumb_url, key):
+    """Load thumbnail into bpy.data.images and return the image object"""
+    try:
+        # Use a safe filename/identifier
+        safe_key = key.replace('-', '_')[:20]
+        img_identifier = f"rpm_thumb_{safe_key}"
+        
+        # First check if already loaded in Blender (packed or not)
+        for img in bpy.data.images:
+            # Check by name pattern or filepath containing our identifier
+            if img_identifier in img.name or (img.filepath and safe_key in img.filepath):
+                # Found it! Just ensure preview exists
+                if not img.preview:
+                    img.preview_ensure()
+                return img
+        
+        # Not loaded yet - need to download, load, pack, and delete
+        addon_dir = os.path.dirname(__file__)
+        thumbs_dir = os.path.join(addon_dir, 'thumbnail_cache')
+        os.makedirs(thumbs_dir, exist_ok=True)
+        
+        clean = thumb_url.split('?')[0]
+        ext = os.path.splitext(clean)[1] or '.png'
+        thumb_filename = f"rpm_{safe_key}{ext}"
+        thumb_path = os.path.join(thumbs_dir, thumb_filename)
+        
+        # Download if not cached
+        if not os.path.exists(thumb_path):
+            urllib.request.urlretrieve(thumb_url, thumb_path)
+        
+        # Load into Blender
+        img = bpy.data.images.load(thumb_path, check_existing=True)
+        if img:
+            # Set a consistent name for easier lookup later
+            try:
+                img.name = img_identifier
+            except:
+                pass  # Name setting might fail in some contexts
+            
+            # Generate preview
+            img.preview_ensure()
+            
+            # Pack immediately
+            img.pack()
+            
+            # Delete from disk immediately
+            try:
+                os.remove(thumb_path)
+            except:
+                pass  # Don't block if delete fails
+        
+        return img
+    except Exception as e:
+        print(f'RPM: image load error: {e}')
+        return None
+
 class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
     bl_idname = __name__
 
@@ -405,6 +517,11 @@ class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
     scraped_avatars_json: bpy.props.StringProperty(
         name="Scraped Avatars JSON",
         default=""
+    )
+    
+    avatar_items: bpy.props.CollectionProperty(
+        type=RPM_AvatarItem,
+        name="Avatar Items"
     )
     login_email: bpy.props.StringProperty(
         name="Login Email",
@@ -634,9 +751,38 @@ class RPM_OT_OpenMyAvatars(bpy.types.Operator):
                         try:
                             p = bpy.context.preferences.addons[__name__].preferences
                             p.scraped_avatars_json = json.dumps(data)
-                            print(f"RPM: Received {len(data.get('items') or [])} avatars")
-                        except Exception:
-                            pass
+                            
+                            # Store in persistent collection
+                            p.avatar_items.clear()
+                            items = data.get('items') or []
+                            for it in items:
+                                new_item = p.avatar_items.add()
+                                new_item.glb_url = it.get('glb') or ''
+                                new_item.thumb_url = it.get('thumb') or ''
+                                new_item.avatar_id = it.get('id') or ''
+                            
+                            print(f"RPM: Received and stored {len(items)} avatars")
+                            
+                            # Pre-load all thumbnails in batch (download, pack, delete)
+                            print(f"RPM: Pre-loading {len(items)} thumbnails...")
+                            for it in items:
+                                thumb = it.get('thumb') or ''
+                                aid = it.get('id') or ''
+                                if thumb and aid:
+                                    try:
+                                        _get_or_load_image(thumb, aid)
+                                    except Exception:
+                                        pass
+                            print(f"RPM: All thumbnails loaded and packed")
+                            
+                            # Save to disk for persistence
+                            try:
+                                _save_prefs_to_disk(p)
+                                print("RPM: Saved avatar data to disk")
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            print(f"RPM: Error storing avatars: {e}")
                         try:
                             os.remove(out_path)
                         except Exception:
@@ -704,8 +850,9 @@ class RPM_OT_ImportAvatarURL(bpy.types.Operator):
     bl_idname = "readyplayerme.import_avatar_url"
     bl_label = "Import RPM Avatar by URL"
     bl_options = {'REGISTER', 'UNDO'}
-
+    
     url: bpy.props.StringProperty(default="")
+    avatar_id_display: bpy.props.StringProperty(default="")  # For tooltip/description
     quality: bpy.props.EnumProperty(
         items=[('high','High',''),('medium','Medium',''),('low','Low','')],
         default='low'
@@ -717,16 +864,28 @@ class RPM_OT_ImportAvatarURL(bpy.types.Operator):
         items=[('none','None',''),('256','256',''),('512','512',''),('1024','1024','')],
         default='1024'
     )
+    
+    @classmethod
+    def description(cls, context, properties):
+        aid = properties.avatar_id_display
+        if aid:
+            return f"Download model {aid}.glb"
+        return "Download Ready Player Me avatar"
 
     def execute(self, context):
         if not self.url:
             self.report({'ERROR'}, "Missing URL")
             return {'CANCELLED'}
+        
+        # Show which model is being downloaded
+        if self.avatar_id_display:
+            print(f"RPM: Downloading model {self.avatar_id_display}.glb")
+            self.report({'INFO'}, f"Downloading {self.avatar_id_display}.glb...")
+        
         try:
             bpy.ops.import_scene.readyplayerme_importer(
                 'EXEC_DEFAULT',
                 model_url=self.url,
-                mode='URL',
                 quality=self.quality,
                 t_pose=self.t_pose,
                 arkit_shapes=self.arkit_shapes,

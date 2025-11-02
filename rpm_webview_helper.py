@@ -50,6 +50,13 @@ class API:
             return {'email': self._email, 'password': self._password}
         except Exception:
             return {'email': '', 'password': ''}
+    
+    def close_window(self):
+        try:
+            print('RPM helper: close_window called, destroying window...')
+            webview.windows[0].destroy()
+        except Exception as e:
+            print('RPM helper: close_window error', e)
 
 
 def start_inject(w):
