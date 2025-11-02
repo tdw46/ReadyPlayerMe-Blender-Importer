@@ -4,7 +4,7 @@ bl_info = {
     "category": "Import-Export",
     "description": "Import ReadyPlayerMe models into Blender",
     "author": "BeyondDev (Tyler Walker)",
-    "version": (2, 0, 6),
+    "version": (2, 2, 2),
     "location": "File > Import > ReadyPlayerMe Import",
     "warning": "",
     "doc_url": "",
@@ -79,6 +79,10 @@ def _load_prefs_from_disk():
             new_item.glb_url = item_data.get('glb_url') or ''
             new_item.thumb_url = item_data.get('thumb_url') or ''
             new_item.avatar_id = item_data.get('avatar_id') or ''
+        
+        # Load dev mode
+        if 'dev_mode' in data:
+            p.dev_mode = data.get('dev_mode', False)
         
         print(f'RPM: Loaded {len(avatar_list)} avatars from disk')
     except Exception as e:
@@ -177,6 +181,24 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
             except Exception as e:
                 print(f"RPM: Could not write defaults: {e}")
             
+            # Save dev_mode to prefs file for webview helper
+            prefs_file = os.path.join(addon_dir, 'rpm_prefs.json')
+            try:
+                prefs_data = {}
+                if os.path.exists(prefs_file):
+                    with open(prefs_file, 'r', encoding='utf-8') as f:
+                        prefs_data = json.load(f)
+                
+                prefs = context.preferences.addons[__name__].preferences
+                prefs_data['dev_mode'] = prefs.dev_mode
+                prefs_data['email'] = prefs.login_email or ''
+                prefs_data['password'] = prefs.login_password or ''
+                
+                with open(prefs_file, 'w', encoding='utf-8') as f:
+                    json.dump(prefs_data, f)
+            except Exception as e:
+                print(f"RPM: Could not save dev_mode: {e}")
+            
             # Start webview in subprocess
             helper_path = os.path.join(addon_dir, 'rpm_ui_webview.py')
             cmd = _find_system_python_command()
@@ -189,13 +211,36 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
             env = os.environ.copy()
             env['RPM_HTML_PATH'] = html_path
             env['RPM_ADDON_NAME'] = __name__
+            # Unbuffer Python IO for real-time logging from child
+            env['PYTHONUNBUFFERED'] = '1'
+            env['PYTHONIOENCODING'] = 'utf-8'
             
             self._webview_process = subprocess.Popen(
                 [cmd, helper_path],
                 env=env,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
+                bufsize=1,
+                universal_newlines=True
             )
+
+            # Stream child stdout/stderr to Blender console
+            def _forward_stream(stream, prefix):
+                try:
+                    for line in iter(stream.readline, ''):
+                        try:
+                            print(f"{prefix}{line.rstrip()}")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            try:
+                t_out = threading.Thread(target=_forward_stream, args=(self._webview_process.stdout, 'RPM UI> '), daemon=True)
+                t_err = threading.Thread(target=_forward_stream, args=(self._webview_process.stderr, 'RPM UI ERR> '), daemon=True)
+                t_out.start()
+                t_err.start()
+            except Exception:
+                pass
             
             # Start modal timer
             wm = context.window_manager
@@ -482,6 +527,11 @@ class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
         default="",
         subtype='PASSWORD'
     )
+    dev_mode: bpy.props.BoolProperty(
+        name="Developer Mode",
+        description="Show developer webview window during avatar refresh",
+        default=False
+    )
 
     def draw(self, context):
         layout = self.layout
@@ -494,6 +544,11 @@ class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
         box = layout.box()
         box.prop(self, 'login_email')
         box.prop(self, 'login_password')
+        
+        dev_box = layout.box()
+        dev_box.prop(self, 'dev_mode')
+        if self.dev_mode:
+            dev_box.label(text="Developer webview will be visible", icon='INFO')
 
         if not installed:
             ibox = layout.box()

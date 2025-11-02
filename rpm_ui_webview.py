@@ -4,20 +4,120 @@ import sys
 import os
 import subprocess
 import tempfile
+import threading
 
 print('RPM UI helper: starting')
+
+# Setup debug logging - clear log on startup
+def log_debug(msg):
+    """Write debug messages to a log file"""
+    try:
+        log_file = os.path.join(os.path.dirname(__file__), 'rpm_ui_debug.log')
+        with open(log_file, 'a', encoding='utf-8') as f:
+            import datetime
+            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            f.write(f'[{timestamp}] {msg}\n')
+            f.flush()
+    except:
+        pass
+
+# Clear old log on startup
+try:
+    log_file = os.path.join(os.path.dirname(__file__), 'rpm_ui_debug.log')
+    if os.path.exists(log_file):
+        os.remove(log_file)
+except:
+    pass
+
+log_debug('=== RPM UI Helper Starting ===')
 
 class UIApi:
     def __init__(self):
         self._window = None
         self._addon_name = os.environ.get('RPM_ADDON_NAME', '')
+        self._refresh_progress = {'message': 'Idle', 'percent': 0, 'complete': True, 'error': None}
     
     def set_window(self, window):
         self._window = window
     
+    def get_credentials(self):
+        """Get saved credentials"""
+        try:
+            addon_dir = os.path.dirname(__file__)
+            prefs_file = os.path.join(addon_dir, 'rpm_prefs.json')
+            if os.path.exists(prefs_file):
+                with open(prefs_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return {
+                        'email': data.get('email', ''),
+                        'password': data.get('password', '')
+                    }
+            return {'email': '', 'password': ''}
+        except Exception as e:
+            print(f'RPM UI: get_credentials error: {e}')
+            return {'email': '', 'password': ''}
+    
+    def save_credentials(self, email, password):
+        """Save credentials to prefs"""
+        try:
+            addon_dir = os.path.dirname(__file__)
+            prefs_file = os.path.join(addon_dir, 'rpm_prefs.json')
+            
+            data = {}
+            if os.path.exists(prefs_file):
+                try:
+                    with open(prefs_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                except:
+                    pass
+            
+            data['email'] = email
+            data['password'] = password
+            
+            with open(prefs_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f)
+            
+            print('RPM UI: Credentials saved')
+            return True
+        except Exception as e:
+            print(f'RPM UI: save_credentials error: {e}')
+            return False
+    
+    def get_refresh_progress(self):
+        """Get current refresh progress"""
+        prog = self._refresh_progress
+        
+        # Print status updates to Blender console for user visibility
+        if prog.get('percent') and not hasattr(self, '_last_reported_percent'):
+            self._last_reported_percent = -1
+        
+        current = prog.get('percent', 0)
+        if current != getattr(self, '_last_reported_percent', -1):
+            if current in [10, 25, 40, 60, 90, 95, 100]:
+                print(f'RPM UI: Refresh progress: {current}%')
+                self._last_reported_percent = current
+        
+        if prog.get('complete'):
+            if prog.get('error'):
+                print(f'RPM UI: Refresh ERROR: {prog.get("error")}')
+            elif prog.get('reload'):
+                print('RPM UI: Refresh COMPLETE - Reloading avatars from prefs file')
+        
+        return prog
+    
     def refresh_avatars(self):
-        """Open the login webview to refresh avatars"""
-        print('RPM UI: refresh_avatars called')
+        """Open the login webview to refresh avatars - runs synchronously"""
+        print('RPM UI: ========================================')
+        print('RPM UI: REFRESH AVATARS STARTED')
+        print('RPM UI: ========================================')
+        log_debug('=== refresh_avatars called ===')
+        
+        # Reset progress tracking
+        self._last_reported_percent = -1
+        
+        # Reset progress
+        self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 0, 'complete': False, 'error': None}
+        
         try:
             # Launch the existing RPM webview helper
             addon_dir = os.path.dirname(__file__)
@@ -28,9 +128,14 @@ class UIApi:
             fd, out_path = tempfile.mkstemp(prefix='rpm_ui_', suffix='.json')
             os.close(fd)
             
+            # Progress file for communication
+            progress_fd, progress_path = tempfile.mkstemp(prefix='rpm_progress_', suffix='.json')
+            os.close(progress_fd)
+            
             cmd = self._find_python()
             if not cmd:
                 print('RPM UI: No Python command found')
+                self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 0, 'complete': True, 'error': 'Python not found'}
                 return
             
             # Get prefs
@@ -51,60 +156,207 @@ class UIApi:
             env['RPM_INJECT_JS_PATH'] = js_path
             env['RPM_WV_EMAIL'] = email
             env['RPM_WV_PASSWORD'] = password
+            env['RPM_PROGRESS_PATH'] = progress_path
             
-            # Run the webview helper
-            proc = subprocess.Popen(
-                [cmd, helper_path],
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
+            # Check dev mode
+            dev_mode = False
+            try:
+                # Read dev mode from prefs
+                if os.path.exists(prefs_file):
+                    with open(prefs_file, 'r', encoding='utf-8') as f:
+                        prefs_data = json.load(f)
+                        dev_mode = prefs_data.get('dev_mode', False)
+            except:
+                pass
             
-            # Wait for it to finish
-            proc.wait()
+            env['RPM_DEV_MODE'] = '1' if dev_mode else '0'
             
-            # Read the result
-            if os.path.exists(out_path):
+            self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 5, 'complete': False, 'error': None}
+            
+            # Run the webview helper in background thread to not block UI
+            def run_helper():
+                import time
+                log_debug('run_helper: Starting background thread')
+                
+                # Capture child output and forward to this process stdout
+                proc = subprocess.Popen(
+                    [cmd, helper_path],
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    bufsize=1,
+                    universal_newlines=True
+                )
+                
+                def _forward(stream, prefix):
+                    try:
+                        for line in iter(stream.readline, ''):
+                            print(f"{prefix}{line.rstrip()}")
+                    except Exception:
+                        pass
+                
                 try:
-                    with open(out_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        if data.get('type') == 'list':
-                            items = data.get('items', [])
-                            # Save to prefs
-                            avatar_items = []
-                            for it in items:
-                                avatar_items.append({
-                                    'glb_url': it.get('glb', ''),
-                                    'thumb_url': it.get('thumb', ''),
-                                    'avatar_id': it.get('id', '')
-                                })
-                            
-                            # Update prefs file
-                            prefs_data = {}
-                            if os.path.exists(prefs_file):
-                                try:
-                                    with open(prefs_file, 'r', encoding='utf-8') as f:
-                                        prefs_data = json.load(f)
-                                except:
-                                    pass
-                            
-                            prefs_data['avatar_items'] = avatar_items
-                            
-                            with open(prefs_file, 'w', encoding='utf-8') as f:
-                                json.dump(prefs_data, f)
-                            
-                            print(f'RPM UI: Saved {len(avatar_items)} avatars')
-                            
-                            # Update the UI
-                            if self._window:
-                                js = f'updateAvatarsList({json.dumps(avatar_items)});'
-                                self._window.evaluate_js(js)
+                    t1 = threading.Thread(target=_forward, args=(proc.stdout, 'RPM helper> '), daemon=True)
+                    t2 = threading.Thread(target=_forward, args=(proc.stderr, 'RPM helper ERR> '), daemon=True)
+                    t1.start(); t2.start()
+                except Exception:
+                    pass
+                
+                print(f'RPM UI: Started helper process PID={proc.pid}')
+                sys.stdout.flush()
+                log_debug(f'run_helper: Started helper process PID={proc.pid}')
+                
+                # Poll for progress updates with timeout
+                start_time = time.time()
+                timeout = 120  # 2 minute timeout
+                last_percent = -1
+                
+                while proc.poll() is None:
+                    # Check timeout
+                    if time.time() - start_time > timeout:
+                        print('RPM UI: Helper process timeout, terminating...')
+                        proc.terminate()
+                        self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 0, 'complete': True, 'error': 'Timeout after 2 minutes'}
+                        return
                     
-                    os.remove(out_path)
-                except Exception as e:
-                    print(f'RPM UI: Error reading result: {e}')
+                    if os.path.exists(progress_path):
+                        try:
+                            with open(progress_path, 'r', encoding='utf-8') as f:
+                                progress_data = json.load(f)
+                                percent = progress_data.get('percent', 5)
+                                self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': percent, 'complete': False, 'error': None}
+                                if percent != last_percent:
+                                    print(f'RPM UI: Progress update: {percent}%')
+                                    log_debug(f'run_helper: Progress update: {percent}%')
+                                    last_percent = percent
+                        except Exception as e:
+                            # Avoid spamming the console for transient partial writes
+                            log_debug(f'run_helper: Failed to read progress: {e}')
+                    time.sleep(0.2)
+                
+                # Wait for completion
+                return_code = proc.wait()
+                print(f'RPM UI: Helper process completed with return code: {return_code}')
+                sys.stdout.flush()
+                log_debug(f'run_helper: Helper process completed with return_code={return_code}')
+                
+                self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 95, 'complete': False, 'error': None}
+                print(f'RPM UI: Checking for output file: {out_path}')
+                sys.stdout.flush()  # Force console output
+                
+                # Wait a bit for file to be written
+                time.sleep(0.5)
+                
+                # Try multiple times to read the file
+                max_attempts = 5
+                file_found = False
+                for attempt in range(max_attempts):
+                    if os.path.exists(out_path):
+                        file_found = True
+                        print(f'RPM UI: Output file found on attempt {attempt + 1}')
+                        log_debug(f'run_helper: Output file found on attempt {attempt + 1}')
+                        break
+                    time.sleep(0.2)
+                
+                # Read the result
+                if file_found:
+                    log_debug('run_helper: Reading output file...')
+                    try:
+                        with open(out_path, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            print(f'RPM UI: Read data type: {data.get("type")}')
+                            log_debug(f'run_helper: Read data type: {data.get("type")}')
+                            if data.get('type') == 'list':
+                                items = data.get('items', [])
+                                # Save to prefs
+                                avatar_items = []
+                                for it in items:
+                                    avatar_items.append({
+                                        'glb_url': it.get('glb', ''),
+                                        'thumb_url': it.get('thumb', ''),
+                                        'avatar_id': it.get('id', '')
+                                    })
+                                
+                                # Update prefs file
+                                prefs_data = {}
+                                if os.path.exists(prefs_file):
+                                    try:
+                                        with open(prefs_file, 'r', encoding='utf-8') as f:
+                                            prefs_data = json.load(f)
+                                    except:
+                                        pass
+                                
+                                prefs_data['avatar_items'] = avatar_items
+                                
+                                with open(prefs_file, 'w', encoding='utf-8') as f:
+                                    json.dump(prefs_data, f, indent=2)
+                                
+                                print(f'RPM UI: Saved {len(avatar_items)} avatars to prefs file: {prefs_file}')
+                                print(f'RPM UI: First avatar: {avatar_items[0] if avatar_items else "none"}')
+                                sys.stdout.flush()
+                                log_debug(f'run_helper: Saved {len(avatar_items)} avatars to prefs file')
+                                log_debug(f'run_helper: First avatar: {avatar_items[0] if avatar_items else "none"}')
+                                
+                                # Signal completion with success flag
+                                self._refresh_progress = {
+                                    'message': 'Retrieving Avatar Data...', 
+                                    'percent': 100, 
+                                    'complete': True, 
+                                    'error': None,
+                                    'reload': True  # Signal to reload avatars
+                                }
+                                print('RPM UI: *** REFRESH COMPLETE - Avatars should reload now ***')
+                                sys.stdout.flush()
+                                log_debug('run_helper: Set progress to 100% with reload flag')
+                            elif data.get('type') == 'error':
+                                error_msg = data.get('message', 'Unknown error')
+                                self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 0, 'complete': True, 'error': error_msg}
+                                print(f'RPM UI: Refresh error: {error_msg}')
+                        
+                        try:
+                            os.remove(out_path)
+                        except:
+                            pass
+                    except Exception as e:
+                        self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 0, 'complete': True, 'error': str(e)}
+                        print(f'RPM UI: Error reading result: {e}')
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print(f'RPM UI: !!! ERROR - Output file not found after {max_attempts} attempts !!!')
+                    print(f'RPM UI: Expected path: {out_path}')
+                    sys.stdout.flush()
+                    # List files in temp directory
+                    try:
+                        temp_dir = os.path.dirname(out_path)
+                        files = os.listdir(temp_dir)
+                        rpm_files = [f for f in files if 'rpm' in f.lower()]
+                        print(f'RPM UI: RPM files in temp dir: {rpm_files}')
+                        sys.stdout.flush()
+                    except Exception as e:
+                        print(f'RPM UI: Could not list temp dir: {e}')
+                        sys.stdout.flush()
+                    self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 0, 'complete': True, 'error': 'Output file not created'}
+                    log_debug('run_helper: ERROR - Output file not created')
+                
+                # Cleanup progress file
+                try:
+                    if os.path.exists(progress_path):
+                        os.remove(progress_path)
+                except:
+                    pass
+            
+            # Start helper in background thread
+            helper_thread = threading.Thread(target=run_helper, daemon=True)
+            helper_thread.start()
+            print('RPM UI: Background refresh thread started successfully')
+            print('RPM UI: Progress updates will appear below as refresh proceeds...')
+            
         except Exception as e:
+            self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 0, 'complete': True, 'error': str(e)}
             print(f'RPM UI: refresh_avatars error: {e}')
+            import traceback
+            traceback.print_exc()
     
     def get_avatars(self):
         """Get current avatars list from prefs"""
@@ -115,7 +367,11 @@ class UIApi:
             if os.path.exists(prefs_file):
                 with open(prefs_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
+                    avatar_count = len(data.get('avatar_items', []))
+                    print(f'RPM UI: Loading {avatar_count} avatars from prefs file')
                     return data.get('avatar_items', [])
+            
+            print('RPM UI: No prefs file found, returning empty avatar list')
             return []
         except Exception as e:
             print(f'RPM UI: get_avatars error: {e}')

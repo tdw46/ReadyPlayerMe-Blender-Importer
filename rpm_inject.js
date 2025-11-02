@@ -7,7 +7,15 @@
     } catch(e) {}
   };
   
-  dbg('inject v1.0.46');
+  dbg('inject v1.0.49');
+  
+  function updateProgress(percent) {
+    try {
+      window.pywebview.api.update_progress(percent);
+    } catch(e) {
+      dbg('updateProgress error: ' + e);
+    }
+  }
   
   function createOverlay() {
     try {
@@ -493,18 +501,57 @@
     var out = [];
     var seen = {};
     
+    updateProgress(60);
+    
+    function extractIdFromStr(s) {
+      if(!s) return null;
+      try {
+        var dec = s;
+        var qi = s.indexOf('url=');
+        if(qi !== -1) {
+          var after = s.slice(qi + 4);
+          var amp = after.indexOf('&');
+          var urlParam = amp !== -1 ? after.slice(0, amp) : after;
+          try { dec = decodeURIComponent(urlParam); } catch(_) {}
+        }
+        var candidates = [s, dec];
+        for(var i=0;i<candidates.length;i++) {
+          var str = candidates[i] || '';
+          var m = str.match(/https?:\/\/models\.readyplayer\.me\/([a-f0-9]+)\.(png|glb)/i);
+          if(m) return m[1];
+        }
+      } catch(_) {}
+      return null;
+    }
+    
     for(var i = 0; i < imgs.length; i++) {
+      var cands = [];
       var src = imgs[i].currentSrc || imgs[i].src || '';
-      var m = src && src.match(/https?:\/\/models\.readyplayer\.me\/([a-f0-9]+)\.png/i);
-      if(m) {
-        var id = m[1];
-        if(seen[id]) continue;
+      if(src) cands.push(src);
+      var ss = imgs[i].getAttribute('srcset') || '';
+      if(ss) {
+        try {
+          var parts = ss.split(',');
+          for(var k=0;k<parts.length;k++) {
+            var urlOnly = parts[k].trim().split(' ')[0];
+            if(urlOnly) cands.push(urlOnly);
+          }
+        } catch(_) {}
+      }
+      var id = null;
+      for(var j=0;j<cands.length && !id;j++) {
+        id = extractIdFromStr(cands[j]);
+      }
+      if(id && !seen[id]) {
         seen[id] = 1;
         out.push({
           id: id,
-          thumb: src,
+          thumb: 'https://models.readyplayer.me/' + id + '.png',
           glb: 'https://models.readyplayer.me/' + id + '.glb'
         });
+        // Progress 60-90% based on avatar collection
+        var progress = 60 + Math.floor((out.length / Math.max(imgs.length, 1)) * 30);
+        updateProgress(Math.min(progress, 90));
       }
     }
     return out;
@@ -618,6 +665,7 @@
           if(!window.__rpmDidSubmitSub) {
             window.__rpmDidSubmitSub = true;
             
+            updateProgress(40);
             dbg('Starting subdomain authorize login sequence');
             dbg('Email input found: ' + !!emailInput);
             dbg('Password input found: ' + !!passInput);
@@ -767,6 +815,7 @@
                   window.__rpmDisableStabilizers = true;
                   window.__rpmAutofilling = true;
                   
+                  updateProgress(10);
                   dbg('Starting Studio login sequence');
                   
                   setTimeout(function() {
@@ -896,6 +945,9 @@
           return;
         }
         
+        updateProgress(25);
+        dbg('Subdomain extracted: ' + sub);
+        
         if(!window.__rpmDidRedirectToSub) {
           window.__rpmDidRedirectToSub = true;
           var target = 'https://' + sub + '.readyplayer.me/avatar/authorize';
@@ -907,19 +959,46 @@
         onSubSignin();
       } else if(/\.readyplayer\.me$/.test(h) && p.indexOf('/avatar/choose') === 0) {
         removeOverlay();
-        var list = collect();
-        if(list && list.length) {
-          try {
-            window.pywebview.api.on_list({type: 'list', items: list});
-            dbg('Avatar list sent, closing window in 1s...');
-            setTimeout(function() {
-              try {
-                window.pywebview.api.close_window();
-              } catch(__) {}
-            }, 1000);
-          } catch(_) {}
-          return;
+        
+        if(!window.__rpmChoosePageHandled) {
+          window.__rpmChoosePageHandled = true;
+          
+          dbg('Choose page detected, checking for images...');
+          
+          var attemptCollect = function(attempt) {
+            try {
+              var list = collect();
+              dbg('Attempt ' + attempt + ': Collected ' + (list ? list.length : 0) + ' avatars');
+              
+              if(list && list.length) {
+                dbg('Sending avatar list via on_list API...');
+                try {
+                  window.pywebview.api.on_list({type: 'list', items: list});
+                  dbg('Avatar list sent successfully, closing window in 500ms...');
+                  setTimeout(function() {
+                    try {
+                      window.pywebview.api.close_window();
+                    } catch(e) {
+                      dbg('close_window error: ' + e);
+                    }
+                  }, 500);
+                } catch(e) {
+                  dbg('on_list API error: ' + e);
+                }
+              } else if(attempt < 10) {
+                dbg('No avatars yet, retrying in 200ms...');
+                setTimeout(function() { attemptCollect(attempt + 1); }, 200);
+              } else {
+                dbg('ERROR: No avatars collected after 10 attempts!');
+              }
+            } catch(e) {
+              dbg('Choose page handler error: ' + e);
+            }
+          };
+          
+          attemptCollect(1);
         }
+        return;
       } else if(/\.readyplayer\.me$/.test(h) && p.indexOf('/avatar') === 0) {
         var list = collect();
         if(list && list.length) {

@@ -8,4 +8,5 @@ __pycache__/
 thumbnail_cache/
 rpm_prefs.json
 rpm_ui_defaults.json
-rpm_download_request.json
+rpm_ui_debug.log
+__pycache__/download_request.json

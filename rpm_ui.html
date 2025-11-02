@@ -27,6 +27,8 @@
             flex: 1;
             padding: 20px;
             overflow-y: auto;
+            display: flex;
+            flex-direction: column;
         }
         
         .sidebar {
@@ -47,6 +49,12 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+        }
+        .logo-img {
+            display: block;
+            max-width: 100%;
+            width: 104px;
+            height: auto;
         }
         
         .section {
@@ -170,17 +178,182 @@
         }
         
         .avatars-title {
-            font-size: 18px;
+            font-size: 25px;
             font-weight: 600;
             margin-bottom: 20px;
             color: #fff;
             text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .refresh-icon-btn {
+            background: rgba(102, 126, 234, 0.2);
+            border: 1px solid rgba(102, 126, 234, 0.4);
+            color: #667eea;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .refresh-icon-btn svg {
+            width: 20px;
+            height: 20px;
+            transition: transform 0.3s;
+        }
+        
+        .refresh-icon-btn:hover {
+            background: rgba(102, 126, 234, 0.3);
+            border-color: #667eea;
+        }
+        
+        .refresh-icon-btn:hover svg {
+            transform: rotate(90deg);
+        }
+        
+        .refresh-icon-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .refresh-icon-btn:disabled svg {
+            transform: none;
+        }
+        
+        .profile-menu {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .profile-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 18px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s;
+        }
+        
+        .profile-icon:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.6);
+        }
+        
+        .login-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s;
+        }
+        
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.6);
+        }
+        
+        .dropdown-menu {
+            position: absolute;
+            top: 50px;
+            right: 0;
+            background: linear-gradient(180deg, rgba(0,0,0,0.95) 0%, rgba(30,30,50,0.95) 100%);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 280px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            display: none;
+        }
+        
+        .dropdown-menu.show {
+            display: block;
+            animation: fadeIn 0.2s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .dropdown-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: rgba(255,255,255,0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .dropdown-input {
+            width: 100%;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #e0e0e0;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+        
+        .dropdown-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
+        
+        .save-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 4px;
+        }
+        
+        .save-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(56, 239, 125, 0.4);
         }
         
         .avatars-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 15px;
+            flex: 1;
+            align-items: start;
+            align-content: start;
+            grid-auto-rows: max-content;
+        }
+        
+        #avatarsContainer {
+            flex: 1;
         }
         
         .avatar-card {
@@ -230,10 +403,23 @@
         }
         
         .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 400px;
+            height: 100%;
+            width: 100%;
             text-align: center;
             padding: 60px 20px;
             color: rgba(255,255,255,0.4);
             font-size: 14px;
+        }
+        
+        #progressText {
+            margin-top: 10px;
+            font-size: 16px;
+            color: rgba(255,255,255,0.6);
         }
         
         ::-webkit-scrollbar {
@@ -255,31 +441,34 @@
     </style>
 </head>
 <body>
+    <!-- Profile Menu -->
+    <div class="profile-menu">
+        <div id="profileContainer"></div>
+        <div class="dropdown-menu" id="dropdownMenu">
+            <div class="dropdown-title">Login Credentials</div>
+            <input type="email" class="dropdown-input" id="loginEmail" placeholder="Email">
+            <input type="password" class="dropdown-input" id="loginPassword" placeholder="Password">
+            <button class="save-btn" onclick="saveCredentials()">💾 Save Credentials</button>
+        </div>
+    </div>
+    
     <div class="container">
         <div class="main-pane">
-            <div class="avatars-title">👥 My Avatars</div>
+            <div class="avatars-title">
+                <span>👥 My Avatars</span>
+                <button class="refresh-icon-btn" onclick="refreshAvatars()" id="refreshBtn">
+                    <svg fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                    </svg>
+                </button>
+            </div>
             <div id="avatarsContainer" class="empty-state">
                 Loading avatars...
             </div>
         </div>
         
         <div class="sidebar">
-            <div class="logo">Ready Player Me</div>
-            
-            <div class="section">
-                <button class="refresh-btn" onclick="refreshAvatars()">
-                    <span class="icon">🔄</span>
-                    Refresh My Avatars
-                </button>
-            </div>
-            
-            <div class="section">
-                <div class="section-title">Import from URL</div>
-                <div class="url-group">
-                    <input type="text" class="url-input" id="modelUrl" placeholder="GLB URL or Model ID">
-                    <button class="download-url-btn" onclick="downloadFromUrl()">⬇️</button>
-                </div>
-            </div>
+            <div class="logo"><img src="resources/RPM_logo.png" alt="Ready Player Me" class="logo-img"/></div>
             
             <div class="section">
                 <div class="section-title">Import Options</div>
@@ -315,22 +504,149 @@
                     </div>
                 </div>
             </div>
+            
+            <div class="section">
+                <div class="section-title">Import from URL</div>
+                <div class="url-group">
+                    <input type="text" class="url-input" id="modelUrl" placeholder="GLB URL or Model ID">
+                    <button class="download-url-btn" onclick="downloadFromUrl()">
+                        <svg fill="currentColor" viewBox="0 0 24 24" style="width: 16px; height: 16px;">
+                            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
     
     <script>
+        let currentEmail = '';
+        
         // Update atlas size visibility
         document.getElementById('textureAtlas').addEventListener('change', function() {
             document.getElementById('atlasRow').style.display = this.checked ? 'flex' : 'none';
         });
         
-        function refreshAvatars() {
-            document.getElementById('avatarsContainer').innerHTML = '<div class="empty-state">Refreshing avatars...</div>';
+        // Toggle dropdown menu
+        function toggleDropdown() {
+            const dropdown = document.getElementById('dropdownMenu');
+            dropdown.classList.toggle('show');
+        }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('dropdownMenu');
+            const profileContainer = document.getElementById('profileContainer');
+            if (!dropdown.contains(e.target) && !profileContainer.contains(e.target)) {
+                dropdown.classList.remove('show');
+            }
+        });
+        
+        // Update profile display
+        function updateProfileDisplay(email) {
+            currentEmail = email || '';
+            const container = document.getElementById('profileContainer');
+            
+            if (!currentEmail) {
+                // Show login button
+                container.innerHTML = '<button class="login-btn" onclick="toggleDropdown()">Login</button>';
+            } else {
+                // Show profile icon with first letter
+                const firstLetter = currentEmail.charAt(0).toUpperCase();
+                container.innerHTML = '<div class="profile-icon" onclick="toggleDropdown()">' + firstLetter + '</div>';
+            }
+        }
+        
+        function saveCredentials() {
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value.trim();
+            
+            if (!email || !password) {
+                alert('Please enter both email and password');
+                return;
+            }
+            
             try {
-                window.pywebview.api.refresh_avatars();
+                window.pywebview.api.save_credentials(email, password).then(function() {
+                    updateProfileDisplay(email);
+                    toggleDropdown();
+                    alert('Credentials saved successfully!');
+                }).catch(function(err) {
+                    console.error('Error saving credentials:', err);
+                    alert('Failed to save credentials');
+                });
             } catch(e) {
+                console.error('Failed to save credentials:', e);
+            }
+        }
+        
+        function refreshAvatars() {
+            const container = document.getElementById('avatarsContainer');
+            const refreshBtn = document.getElementById('refreshBtn');
+            
+            container.innerHTML = '<div class="empty-state">Refreshing avatars...<br><span id="progressText">Starting...</span></div>';
+            refreshBtn.disabled = true;
+            refreshBtn.style.opacity = '0.5';
+            
+            // Poll for progress updates
+            let progressInterval = setInterval(function() {
+                try {
+                    window.pywebview.api.get_refresh_progress().then(function(progress) {
+                        if (progress && progress.message) {
+                            let progressText = document.getElementById('progressText');
+                            if (progressText) {
+                                if (progress.percent) {
+                                    progressText.textContent = progress.message + ' (' + progress.percent + '%)';
+                                } else {
+                                    progressText.textContent = progress.message;
+                                }
+                            }
+                        }
+                        if (progress && progress.complete) {
+                            clearInterval(progressInterval);
+                            refreshBtn.disabled = false;
+                            refreshBtn.style.opacity = '1';
+                            if (progress.error) {
+                                container.innerHTML = '<div class="empty-state">Error: ' + progress.error + '</div>';
+                            } else if (progress.reload) {
+                                // Success - reload avatars from prefs
+                                console.log('Refresh completed successfully, reloading avatars...');
+                                window.pywebview.api.get_avatars().then(function(avatars) {
+                                    console.log('Reloaded', avatars ? avatars.length : 0, 'avatars from prefs');
+                                    updateAvatarsList(avatars);
+                                }).catch(function(err) {
+                                    console.error('Failed to reload avatars:', err);
+                                    container.innerHTML = '<div class="empty-state">Error loading updated avatars</div>';
+                                });
+                            } else {
+                                console.log('Refresh completed successfully');
+                            }
+                        }
+                    }).catch(function(err) {
+                        console.error('Progress check error:', err);
+                    });
+                } catch(e) {
+                    console.error('Progress poll error:', e);
+                }
+            }, 150);
+            
+            try {
+                // Just start the refresh - the progress polling will handle updates
+                window.pywebview.api.refresh_avatars().then(function() {
+                    console.log('Refresh started successfully');
+                }).catch(function(err) {
+                    clearInterval(progressInterval);
+                    refreshBtn.disabled = false;
+                    refreshBtn.style.opacity = '1';
+                    console.error('Failed to start refresh:', err);
+                    container.innerHTML = '<div class="empty-state">Error: ' + err + '</div>';
+                });
+            } catch(e) {
+                clearInterval(progressInterval);
+                refreshBtn.disabled = false;
+                refreshBtn.style.opacity = '1';
                 console.error('Failed to refresh avatars:', e);
-                document.getElementById('avatarsContainer').innerHTML = '<div class="empty-state">Error refreshing avatars</div>';
+                container.innerHTML = '<div class="empty-state">Error refreshing avatars</div>';
             }
         }
         
@@ -370,15 +686,16 @@
         }
         
         function updateAvatarsList(avatars) {
-            const container = document.getElementById('avatarsContainer');
+            console.log('updateAvatarsList called with', avatars ? avatars.length : 0, 'avatars');
+            const grid = document.getElementById('avatarsContainer');
             
             if (!avatars || avatars.length === 0) {
-                container.innerHTML = '<div class="empty-state">No avatars found.<br>Click "Refresh My Avatars" to load.</div>';
+                grid.innerHTML = '<div class="empty-state">No avatars found. Click "Refresh My Avatars".</div>';
                 return;
             }
             
-            container.innerHTML = '<div class="avatars-grid"></div>';
-            const grid = container.querySelector('.avatars-grid');
+            grid.innerHTML = '';
+            grid.className = 'avatars-grid';
             
             avatars.forEach(function(avatar) {
                 const card = document.createElement('div');
@@ -395,8 +712,8 @@
                 
                 const btn = document.createElement('button');
                 btn.className = 'avatar-btn';
-                btn.innerHTML = '<span class="icon">⬇</span> Download';
-                btn.title = 'Download model ' + (avatar.avatar_id || '') + '.glb';
+                btn.innerHTML = '<svg fill="currentColor" viewBox="0 0 24 24" style="width: 14px; height: 14px;"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Import';
+                btn.title = 'Import model ' + (avatar.avatar_id || '') + '.glb';
                 btn.onclick = function() {
                     downloadAvatar(avatar.glb_url, avatar.avatar_id);
                 };
@@ -434,6 +751,22 @@
         // Load avatars and defaults on startup with retry
         function loadAvatars() {
             try {
+                // Load credentials
+                window.pywebview.api.get_credentials().then(function(creds) {
+                    if (creds && creds.email) {
+                        document.getElementById('loginEmail').value = creds.email;
+                        updateProfileDisplay(creds.email);
+                    } else {
+                        updateProfileDisplay('');
+                    }
+                    if (creds && creds.password) {
+                        document.getElementById('loginPassword').value = creds.password;
+                    }
+                }).catch(function(err) {
+                    console.error('Error loading credentials:', err);
+                    updateProfileDisplay('');
+                });
+                
                 // Load defaults first
                 window.pywebview.api.get_defaults().then(function(defaults) {
                     console.log('Loaded defaults:', defaults);
