@@ -4,7 +4,7 @@ bl_info = {
     "category": "Import-Export",
     "description": "Import ReadyPlayerMe models into Blender",
     "author": "BeyondDev (Tyler Walker)",
-    "version": (1, 0, 64),
+    "version": (2, 0, 2),
     "location": "File > Import > ReadyPlayerMe Import",
     "warning": "",
     "doc_url": "",
@@ -122,6 +122,127 @@ def _install_pywebview():
 
 PYWEBVIEW_OK = False
 preview_col = None
+
+class RPM_OT_OpenUIWebview(bpy.types.Operator):
+    """Open Ready Player Me UI in webview"""
+    bl_idname = "readyplayerme.open_ui_webview"
+    bl_label = "Ready Player Me Importer"
+    bl_options = {'REGISTER'}
+    
+    _timer = None
+    _webview_process = None
+    _ui_window = None
+    
+    def modal(self, context, event):
+        if event.type == 'TIMER':
+            # Check if webview is still running
+            if self._webview_process and self._webview_process.poll() is not None:
+                self.cancel(context)
+                return {'CANCELLED'}
+            
+            # Check for download requests
+            addon_dir = os.path.dirname(__file__)
+            req_file = os.path.join(addon_dir, 'rpm_download_request.json')
+            if os.path.exists(req_file):
+                try:
+                    with open(req_file, 'r', encoding='utf-8') as f:
+                        options = json.load(f)
+                    os.remove(req_file)
+                    
+                    # Trigger import
+                    url = options.get('url', '')
+                    if url:
+                        bpy.ops.import_scene.readyplayerme_importer(
+                            'EXEC_DEFAULT',
+                            model_url=url,
+                            quality=options.get('quality', 'low'),
+                            t_pose=options.get('t_pose', True),
+                            arkit_shapes=options.get('arkit_shapes', True),
+                            enable_texture_atlas=options.get('texture_atlas', True),
+                            texture_atlas_size=options.get('texture_atlas_size', '1024')
+                        )
+                        print(f"RPM: Imported {options.get('avatar_id', 'avatar')}")
+                except Exception as e:
+                    print(f"RPM: Error processing download request: {e}")
+        
+        if event.type == 'ESC':
+            self.cancel(context)
+            return {'CANCELLED'}
+        
+        return {'PASS_THROUGH'}
+    
+    def execute(self, context):
+        # Check pywebview
+        if not _is_pywebview_available():
+            self.report({'ERROR'}, "pywebview not available. Install in addon preferences.")
+            return {'CANCELLED'}
+        
+        try:
+            # Get HTML path
+            addon_dir = os.path.dirname(__file__)
+            html_path = os.path.join(addon_dir, 'rpm_ui.html')
+            
+            if not os.path.exists(html_path):
+                self.report({'ERROR'}, f"UI file not found: {html_path}")
+                return {'CANCELLED'}
+            
+            # Write default property values for webview
+            defaults_file = os.path.join(addon_dir, 'rpm_ui_defaults.json')
+            try:
+                defaults = {
+                    'quality': 'high',
+                    't_pose': True,
+                    'arkit_shapes': True,
+                    'enable_texture_atlas': True,
+                    'texture_atlas_size': '1024'
+                }
+                with open(defaults_file, 'w', encoding='utf-8') as f:
+                    json.dump(defaults, f)
+            except Exception as e:
+                print(f"RPM: Could not write defaults: {e}")
+            
+            # Start webview in subprocess
+            helper_path = os.path.join(addon_dir, 'rpm_ui_webview.py')
+            cmd = _find_system_python_command()
+            
+            if not cmd:
+                self.report({'ERROR'}, "No Python command found")
+                return {'CANCELLED'}
+            
+            # Set env vars
+            env = os.environ.copy()
+            env['RPM_HTML_PATH'] = html_path
+            env['RPM_ADDON_NAME'] = __name__
+            
+            self._webview_process = subprocess.Popen(
+                [cmd, helper_path],
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            
+            # Start modal timer
+            wm = context.window_manager
+            self._timer = wm.event_timer_add(0.1, window=context.window)
+            wm.modal_handler_add(self)
+            
+            print("RPM: UI webview started")
+            return {'RUNNING_MODAL'}
+            
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to start UI webview: {e}")
+            return {'CANCELLED'}
+    
+    def cancel(self, context):
+        wm = context.window_manager
+        if self._timer:
+            wm.event_timer_remove(self._timer)
+        if self._webview_process:
+            try:
+                self._webview_process.terminate()
+            except:
+                pass
+        print("RPM: UI webview closed")
 
 class ReadyPlayerMeImporter(bpy.types.Operator):
     """Import a ReadyPlayerMe model"""
@@ -383,12 +504,13 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
 
 def menu_func_import(self, context):
     print(f"RPM: menu_func_import called. PYWEBVIEW_OK={PYWEBVIEW_OK}")
-    self.layout.operator(ReadyPlayerMeImporter.bl_idname, text="Ready Player Me (My Avatars / URL)")
+    self.layout.operator(RPM_OT_OpenUIWebview.bl_idname, text="Ready Player Me")
 
 
 def register():
     global PYWEBVIEW_OK
     bpy.utils.register_class(RPM_AvatarItem)
+    bpy.utils.register_class(RPM_OT_OpenUIWebview)
     bpy.utils.register_class(ReadyPlayerMeImporter)
     bpy.utils.register_class(ReadyPlayerMePreferences)
     bpy.utils.register_class(RPM_OT_InstallDependenciesModal)
@@ -412,6 +534,7 @@ def unregister():
     bpy.utils.unregister_class(RPM_OT_ImportAvatarURL)
     bpy.utils.unregister_class(ReadyPlayerMePreferences)
     bpy.utils.unregister_class(ReadyPlayerMeImporter)
+    bpy.utils.unregister_class(RPM_OT_OpenUIWebview)
     bpy.utils.unregister_class(RPM_AvatarItem)
     try:
         del bpy.types.WindowManager.rpm_dep_install_running

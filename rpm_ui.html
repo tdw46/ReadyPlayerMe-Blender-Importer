@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Ready Player Me - Blender Importer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #e0e0e0;
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        .main-pane {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .sidebar {
+            width: 350px;
+            background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.6) 100%);
+            backdrop-filter: blur(10px);
+            border-left: 1px solid rgba(255,255,255,0.1);
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+        }
+        
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(5px);
+        }
+        
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: rgba(255,255,255,0.7);
+        }
+        
+        .refresh-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            justify-content: center;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .url-group {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .url-input {
+            flex: 1;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #e0e0e0;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        
+        .url-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
+        
+        .download-url-btn {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.3s;
+        }
+        
+        .download-url-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(56, 239, 125, 0.4);
+        }
+        
+        .options-grid {
+            display: grid;
+            gap: 10px;
+        }
+        
+        .option-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #667eea;
+        }
+        
+        label {
+            font-size: 13px;
+            cursor: pointer;
+            user-select: none;
+            flex: 1;
+        }
+        
+        select {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #e0e0e0;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            flex: 1;
+        }
+        
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .avatars-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #fff;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        
+        .avatars-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 15px;
+        }
+        
+        .avatar-card {
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid rgba(255,255,255,0.1);
+            transition: all 0.3s;
+            backdrop-filter: blur(5px);
+        }
+        
+        .avatar-card:hover {
+            border-color: rgba(102, 126, 234, 0.8);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+        
+        .avatar-thumb {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            background: linear-gradient(135deg, rgba(0,0,0,0.5) 0%, rgba(50,50,50,0.5) 100%);
+        }
+        
+        .avatar-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: all 0.3s;
+        }
+        
+        .avatar-btn:hover {
+            background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+        }
+        
+        .icon {
+            font-size: 14px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: rgba(255,255,255,0.4);
+            font-size: 14px;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-pane">
+            <div class="avatars-title">👥 My Avatars</div>
+            <div id="avatarsContainer" class="empty-state">
+                Loading avatars...
+            </div>
+        </div>
+        
+        <div class="sidebar">
+            <div class="logo">Ready Player Me</div>
+            
+            <div class="section">
+                <button class="refresh-btn" onclick="refreshAvatars()">
+                    <span class="icon">🔄</span>
+                    Refresh My Avatars
+                </button>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Import from URL</div>
+                <div class="url-group">
+                    <input type="text" class="url-input" id="modelUrl" placeholder="GLB URL or Model ID">
+                    <button class="download-url-btn" onclick="downloadFromUrl()">⬇️</button>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Import Options</div>
+                <div class="options-grid">
+                    <div class="option-row">
+                        <label>Quality</label>
+                        <select id="quality">
+                            <option value="high" selected>High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                    <div class="option-row">
+                        <input type="checkbox" id="tPose" class="checkbox" checked>
+                        <label for="tPose">T Pose</label>
+                    </div>
+                    <div class="option-row">
+                        <input type="checkbox" id="arkitShapes" class="checkbox" checked>
+                        <label for="arkitShapes">ARKit Shapes</label>
+                    </div>
+                    <div class="option-row">
+                        <input type="checkbox" id="textureAtlas" class="checkbox" checked>
+                        <label for="textureAtlas">Texture Atlas</label>
+                    </div>
+                    <div class="option-row" id="atlasRow">
+                        <label>Atlas Size</label>
+                        <select id="textureAtlasSize">
+                            <option value="256">256</option>
+                            <option value="512">512</option>
+                            <option value="1024" selected>1024</option>
+                            <option value="2048">2048</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Update atlas size visibility
+        document.getElementById('textureAtlas').addEventListener('change', function() {
+            document.getElementById('atlasRow').style.display = this.checked ? 'flex' : 'none';
+        });
+        
+        function refreshAvatars() {
+            document.getElementById('avatarsContainer').innerHTML = '<div class="empty-state">Refreshing avatars...</div>';
+            try {
+                window.pywebview.api.refresh_avatars();
+            } catch(e) {
+                console.error('Failed to refresh avatars:', e);
+                document.getElementById('avatarsContainer').innerHTML = '<div class="empty-state">Error refreshing avatars</div>';
+            }
+        }
+        
+        function downloadFromUrl() {
+            const url = document.getElementById('modelUrl').value.trim();
+            if (!url) {
+                alert('Please enter a GLB URL or Model ID');
+                return;
+            }
+            downloadAvatar(url, 'manual');
+        }
+        
+        function downloadAvatar(glbUrl, avatarId) {
+            const options = {
+                url: glbUrl,
+                avatar_id: avatarId,
+                quality: document.getElementById('quality').value,
+                t_pose: document.getElementById('tPose').checked,
+                arkit_shapes: document.getElementById('arkitShapes').checked,
+                texture_atlas: document.getElementById('textureAtlas').checked,
+                texture_atlas_size: document.getElementById('textureAtlasSize').value
+            };
+            
+            try {
+                window.pywebview.api.download_avatar(options);
+                // Close window after download
+                setTimeout(function() {
+                    try {
+                        window.pywebview.api.close_window();
+                    } catch(e) {
+                        console.log('Could not close window:', e);
+                    }
+                }, 500);
+            } catch(e) {
+                console.error('Failed to download avatar:', e);
+            }
+        }
+        
+        function updateAvatarsList(avatars) {
+            const container = document.getElementById('avatarsContainer');
+            
+            if (!avatars || avatars.length === 0) {
+                container.innerHTML = '<div class="empty-state">No avatars found.<br>Click "Refresh My Avatars" to load.</div>';
+                return;
+            }
+            
+            container.innerHTML = '<div class="avatars-grid"></div>';
+            const grid = container.querySelector('.avatars-grid');
+            
+            avatars.forEach(function(avatar) {
+                const card = document.createElement('div');
+                card.className = 'avatar-card';
+                
+                const img = document.createElement('img');
+                img.className = 'avatar-thumb';
+                img.src = avatar.thumb_url || '';
+                img.alt = avatar.avatar_id || 'Avatar';
+                img.style.cursor = 'pointer';
+                img.onclick = function() {
+                    downloadAvatar(avatar.glb_url, avatar.avatar_id);
+                };
+                
+                const btn = document.createElement('button');
+                btn.className = 'avatar-btn';
+                btn.innerHTML = '<span class="icon">⬇</span> Download';
+                btn.title = 'Download model ' + (avatar.avatar_id || '') + '.glb';
+                btn.onclick = function() {
+                    downloadAvatar(avatar.glb_url, avatar.avatar_id);
+                };
+                
+                card.appendChild(img);
+                card.appendChild(btn);
+                grid.appendChild(card);
+            });
+        }
+        
+        // Apply defaults from Blender
+        function applyDefaults(defaults) {
+            if (!defaults) return;
+            
+            if (defaults.quality) {
+                document.getElementById('quality').value = defaults.quality;
+            }
+            if (typeof defaults.t_pose === 'boolean') {
+                document.getElementById('tPose').checked = defaults.t_pose;
+            }
+            if (typeof defaults.arkit_shapes === 'boolean') {
+                document.getElementById('arkitShapes').checked = defaults.arkit_shapes;
+            }
+            if (typeof defaults.enable_texture_atlas === 'boolean') {
+                document.getElementById('textureAtlas').checked = defaults.enable_texture_atlas;
+                document.getElementById('atlasRow').style.display = defaults.enable_texture_atlas ? 'flex' : 'none';
+            }
+            if (defaults.texture_atlas_size) {
+                document.getElementById('textureAtlasSize').value = defaults.texture_atlas_size;
+            }
+            
+            console.log('Applied defaults:', defaults);
+        }
+        
+        // Load avatars and defaults on startup with retry
+        function loadAvatars() {
+            try {
+                // Load defaults first
+                window.pywebview.api.get_defaults().then(function(defaults) {
+                    console.log('Loaded defaults:', defaults);
+                    applyDefaults(defaults);
+                }).catch(function(err) {
+                    console.error('Error loading defaults:', err);
+                });
+                
+                // Then load avatars
+                window.pywebview.api.get_avatars().then(function(avatars) {
+                    console.log('Loaded avatars:', avatars);
+                    updateAvatarsList(avatars);
+                }).catch(function(err) {
+                    console.error('Error loading avatars:', err);
+                    document.getElementById('avatarsContainer').innerHTML = '<div class="empty-state">Click "Refresh My Avatars" to load.</div>';
+                });
+            } catch(e) {
+                console.log('Waiting for pywebview API...', e);
+                setTimeout(loadAvatars, 100);
+            }
+        }
+        
+        window.addEventListener('pywebviewready', loadAvatars);
+        setTimeout(loadAvatars, 100);
+    </script>
+</body>
+</html>
