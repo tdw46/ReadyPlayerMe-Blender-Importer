@@ -1,15 +1,9 @@
-bl_info = {
-    "name": "ReadyPlayerMe Blender Importer",
-    "blender": (2, 80, 0),
-    "category": "Import-Export",
-    "description": "Import ReadyPlayerMe models into Blender",
-    "author": "BeyondDev (Tyler Walker)",
-    "version": (2, 2, 5),
-    "location": "File > Import > ReadyPlayerMe Import",
-    "warning": "",
-    "doc_url": "",
-    "tracker_url": "",
-}
+"""
+ReadyPlayerMe Blender Importer
+Import ReadyPlayerMe avatars directly into Blender with a modern webview UI.
+
+This addon is compatible with Blender 4.5+ extensions platform.
+"""
 
 import bpy
 import urllib.request

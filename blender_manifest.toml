@@ -1,0 +1,21 @@
+schema_version = "1.0.0"
+
+id = "readyplayerme_blender_importer"
+version = "2.2.5"
+name = "ReadyPlayerMe Blender Importer"
+tagline = "Import ReadyPlayerMe avatars directly into Blender"
+maintainer = "BeyondDev (Tyler Walker)"
+type = "add-on"
+
+tags = ["Animation", "Rigging"]
+
+website = "https://github.com/tdw46/mixamo_blender4-main/tree/main"
+
+blender_version_min = "2.93.0"
+blender_version_max = "4.5.999"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+copyright = [
+  "Tyler Walker",
+]
