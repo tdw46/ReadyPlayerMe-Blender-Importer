@@ -416,6 +416,16 @@
             font-size: 14px;
         }
         
+        #avatarsContainer.empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            width: 100%;
+            height: 100%;
+        }
+        
         #progressText {
             margin-top: 10px;
             font-size: 16px;
@@ -446,9 +456,9 @@
         <div id="profileContainer"></div>
         <div class="dropdown-menu" id="dropdownMenu">
             <div class="dropdown-title">Login Credentials</div>
-            <input type="email" class="dropdown-input" id="loginEmail" placeholder="Email">
-            <input type="password" class="dropdown-input" id="loginPassword" placeholder="Password">
-            <button class="save-btn" onclick="saveCredentials()">💾 Save Credentials</button>
+            <input type="email" class="dropdown-input" id="loginEmail" placeholder="Email" onkeypress="if(event.key==='Enter') saveCredentials()">
+            <input type="password" class="dropdown-input" id="loginPassword" placeholder="Password" onkeypress="if(event.key==='Enter') saveCredentials()">
+            <button class="save-btn" onclick="saveCredentials()" id="saveCredsBtn">💾 Save Credentials</button>
         </div>
     </div>
     
@@ -499,7 +509,6 @@
                             <option value="256">256</option>
                             <option value="512">512</option>
                             <option value="1024" selected>1024</option>
-                            <option value="2048">2048</option>
                         </select>
                     </div>
                 </div>
@@ -560,23 +569,40 @@
         function saveCredentials() {
             const email = document.getElementById('loginEmail').value.trim();
             const password = document.getElementById('loginPassword').value.trim();
+            const saveBtn = document.getElementById('saveCredsBtn');
             
             if (!email || !password) {
                 alert('Please enter both email and password');
                 return;
             }
             
+            // Disable button while saving
+            saveBtn.disabled = true;
+            
             try {
                 window.pywebview.api.save_credentials(email, password).then(function() {
+                    // Show checkmark on button
+                    saveBtn.innerHTML = '✓ Saved!';
+                    saveBtn.style.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+                    
                     updateProfileDisplay(email);
-                    toggleDropdown();
-                    alert('Credentials saved successfully!');
+                    
+                    // Close dropdown after brief delay
+                    setTimeout(function() {
+                        toggleDropdown();
+                        // Reset button
+                        saveBtn.innerHTML = '💾 Save Credentials';
+                        saveBtn.style.background = '';
+                        saveBtn.disabled = false;
+                    }, 800);
                 }).catch(function(err) {
                     console.error('Error saving credentials:', err);
                     alert('Failed to save credentials');
+                    saveBtn.disabled = false;
                 });
             } catch(e) {
                 console.error('Failed to save credentials:', e);
+                saveBtn.disabled = false;
             }
         }
         
@@ -584,7 +610,9 @@
             const container = document.getElementById('avatarsContainer');
             const refreshBtn = document.getElementById('refreshBtn');
             
-            container.innerHTML = '<div class="empty-state">Refreshing avatars...<br><span id="progressText">Starting...</span></div>';
+            // Switch container to message mode
+            container.className = 'empty-state';
+            container.innerHTML = 'Refreshing avatars...<br><span id="progressText">Starting...</span>';
             refreshBtn.disabled = true;
             refreshBtn.style.opacity = '0.5';
             
@@ -607,7 +635,8 @@
                             refreshBtn.disabled = false;
                             refreshBtn.style.opacity = '1';
                             if (progress.error) {
-                                container.innerHTML = '<div class="empty-state">Error: ' + progress.error + '</div>';
+                                container.className = 'empty-state';
+                                container.innerHTML = 'Error: ' + progress.error;
                             } else if (progress.reload) {
                                 // Success - reload avatars from prefs
                                 console.log('Refresh completed successfully, reloading avatars...');
@@ -616,7 +645,8 @@
                                     updateAvatarsList(avatars);
                                 }).catch(function(err) {
                                     console.error('Failed to reload avatars:', err);
-                                    container.innerHTML = '<div class="empty-state">Error loading updated avatars</div>';
+                                    container.className = 'empty-state';
+                                    container.innerHTML = 'Error loading updated avatars';
                                 });
                             } else {
                                 console.log('Refresh completed successfully');
@@ -781,7 +811,9 @@
                     updateAvatarsList(avatars);
                 }).catch(function(err) {
                     console.error('Error loading avatars:', err);
-                    document.getElementById('avatarsContainer').innerHTML = '<div class="empty-state">Click "Refresh My Avatars" to load.</div>';
+                    const container = document.getElementById('avatarsContainer');
+                    container.className = 'empty-state';
+                    container.innerHTML = 'Click "Refresh My Avatars" to load.';
                 });
             } catch(e) {
                 console.log('Waiting for pywebview API...', e);

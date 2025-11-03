@@ -4,7 +4,7 @@ bl_info = {
     "category": "Import-Export",
     "description": "Import ReadyPlayerMe models into Blender",
     "author": "BeyondDev (Tyler Walker)",
-    "version": (2, 2, 2),
+    "version": (2, 2, 5),
     "location": "File > Import > ReadyPlayerMe Import",
     "warning": "",
     "doc_url": "",
@@ -23,7 +23,6 @@ import subprocess
 import tempfile
 import shutil
 from bpy.utils import previews
-import time
 
 def _find_system_python_command():
     candidates = []
@@ -52,41 +51,87 @@ def _is_pywebview_available():
     except Exception:
         return False
 
-def _prefs_file_path():
-    return os.path.join(os.path.dirname(__file__), 'rpm_prefs.json')
+def _get_config_backup_path():
+    """Get path to preferences backup file in Blender's config directory."""
+    config_dir = bpy.utils.user_resource('CONFIG')
+    if not config_dir:
+        return None
+    backup_file = os.path.join(config_dir, 'readyplayerme_prefs.json')
+    return backup_file
 
-
-def _load_prefs_from_disk():
+def _backup_prefs_to_config():
+    """Backup preferences to Blender's config directory before unregister."""
     try:
-        path = _prefs_file_path()
-        if not os.path.exists(path):
+        if not bpy.context or not hasattr(bpy.context, 'preferences'):
             return
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        p = bpy.context.preferences.addons[__name__].preferences
-        em = (data.get('email') or '').strip()
-        pw = data.get('password') or ''
-        if em:
-            p.login_email = em
-        if pw:
-            p.login_password = pw
+        backup_path = _get_config_backup_path()
+        if not backup_path:
+            print('RPM: Cannot determine config directory for backup')
+            return
         
-        # Load avatar items
-        avatar_list = data.get('avatar_items') or []
-        p.avatar_items.clear()
-        for item_data in avatar_list:
-            new_item = p.avatar_items.add()
-            new_item.glb_url = item_data.get('glb_url') or ''
-            new_item.thumb_url = item_data.get('thumb_url') or ''
-            new_item.avatar_id = item_data.get('avatar_id') or ''
+        p = bpy.context.preferences.addons.get(__name__)
+        if not p:
+            return
+        prefs = p.preferences
         
-        # Load dev mode
-        if 'dev_mode' in data:
-            p.dev_mode = data.get('dev_mode', False)
+        # Collect all preference data
+        data = {
+            'login_email': prefs.login_email or '',
+            'login_password': prefs.login_password or '',
+            'dev_mode': prefs.dev_mode,
+            'scraped_avatars_json': prefs.scraped_avatars_json or '',
+            'avatar_items': [
+                {
+                    'glb_url': item.glb_url or '',
+                    'thumb_url': item.thumb_url or '',
+                    'avatar_id': item.avatar_id or ''
+                }
+                for item in prefs.avatar_items
+            ]
+        }
         
-        print(f'RPM: Loaded {len(avatar_list)} avatars from disk')
+        # Write backup
+        with open(backup_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        print(f'RPM: Backed up preferences to {backup_path}')
     except Exception as e:
-        print('RPM: failed to load prefs from disk', e)
+        print(f'RPM: Failed to backup preferences: {e}')
+
+def _restore_prefs_from_config():
+    """Restore preferences from Blender's config directory after register."""
+    try:
+        backup_path = _get_config_backup_path()
+        if not backup_path or not os.path.exists(backup_path):
+            return
+        
+        with open(backup_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        p = bpy.context.preferences.addons[__name__].preferences
+        
+        # Only restore if current prefs appear empty (to avoid overwriting manual edits)
+        if not p.login_email and not p.avatar_items:
+            p.login_email = data.get('login_email', '') or ''
+            p.login_password = data.get('login_password', '') or ''
+            p.dev_mode = data.get('dev_mode', False)
+            p.scraped_avatars_json = data.get('scraped_avatars_json', '') or ''
+            
+            # Restore avatar items
+            p.avatar_items.clear()
+            for item_data in data.get('avatar_items', []):
+                new_item = p.avatar_items.add()
+                new_item.glb_url = item_data.get('glb_url', '') or ''
+                new_item.thumb_url = item_data.get('thumb_url', '') or ''
+                new_item.avatar_id = item_data.get('avatar_id', '') or ''
+            
+            print(f'RPM: Restored {len(p.avatar_items)} avatars from config backup')
+            # Save restored prefs back to userpref.blend
+            try:
+                bpy.ops.wm.save_userpref()
+            except Exception:
+                pass
+    except Exception as e:
+        print(f'RPM: Failed to restore preferences: {e}')
 
 def _install_pywebview():
     cmd = _find_system_python_command()
@@ -144,6 +189,66 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
                         print(f"RPM: Imported {options.get('avatar_id', 'avatar')}")
                 except Exception as e:
                     print(f"RPM: Error processing download request: {e}")
+
+            # Check for prefs update requests (credentials)
+            prefs_req = os.path.join(addon_dir, 'rpm_prefs_request.json')
+            if os.path.exists(prefs_req):
+                try:
+                    with open(prefs_req, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    os.remove(prefs_req)
+                    if isinstance(data, dict) and data.get('type') == 'save_credentials':
+                        p = context.preferences.addons[__name__].preferences
+                        p.login_email = data.get('email', '') or ''
+                        p.login_password = data.get('password', '') or ''
+                        print('RPM: Credentials updated in AddonPreferences')
+                        try:
+                            bpy.ops.wm.save_userpref()
+                            print('RPM: User preferences saved')
+                        except Exception as se:
+                            print('RPM: Could not save user preferences', se)
+                except Exception as e:
+                    print('RPM: Failed to process prefs request', e)
+
+            # Check for avatar updates from UI helper
+            avatar_upd = os.path.join(addon_dir, 'rpm_avatar_update.json')
+            if os.path.exists(avatar_upd):
+                try:
+                    with open(avatar_upd, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    os.remove(avatar_upd)
+                    if isinstance(data, dict) and data.get('type') == 'avatar_update':
+                        items = data.get('items') or []
+                        p = context.preferences.addons[__name__].preferences
+                        p.avatar_items.clear()
+                        for it in items:
+                            ni = p.avatar_items.add()
+                            ni.glb_url = it.get('glb_url') or ''
+                            ni.thumb_url = it.get('thumb_url') or ''
+                            ni.avatar_id = it.get('avatar_id') or ''
+                        try:
+                            p.scraped_avatars_json = json.dumps(items)
+                        except Exception:
+                            p.scraped_avatars_json = ''
+                        print(f'RPM: Updated avatar_items in AddonPreferences: {len(p.avatar_items)}')
+                        # Maintain shared avatars file if exists
+                        try:
+                            if getattr(self, '_avatars_tmp_path', None):
+                                tmp_items = []
+                                for it in p.avatar_items:
+                                    tmp_items.append({'glb_url': it.glb_url, 'thumb_url': it.thumb_url, 'avatar_id': it.avatar_id})
+                                with open(self._avatars_tmp_path, 'w', encoding='utf-8') as f:
+                                    json.dump(tmp_items, f)
+                        except Exception as ee:
+                            print('RPM: Failed to update avatars temp file', ee)
+                        # Persist changes to user preferences
+                        try:
+                            bpy.ops.wm.save_userpref()
+                            print('RPM: User preferences saved')
+                        except Exception as se:
+                            print('RPM: Could not save user preferences', se)
+                except Exception as e:
+                    print('RPM: Failed to process avatar update', e)
         
         if event.type == 'ESC':
             self.cancel(context)
@@ -166,38 +271,20 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
                 self.report({'ERROR'}, f"UI file not found: {html_path}")
                 return {'CANCELLED'}
             
-            # Write default property values for webview
-            defaults_file = os.path.join(addon_dir, 'rpm_ui_defaults.json')
-            try:
-                defaults = {
-                    'quality': 'high',
-                    't_pose': True,
-                    'arkit_shapes': True,
-                    'enable_texture_atlas': True,
-                    'texture_atlas_size': '1024'
-                }
-                with open(defaults_file, 'w', encoding='utf-8') as f:
-                    json.dump(defaults, f)
-            except Exception as e:
-                print(f"RPM: Could not write defaults: {e}")
+            prefs = context.preferences.addons[__name__].preferences
             
-            # Save dev_mode to prefs file for webview helper
-            prefs_file = os.path.join(addon_dir, 'rpm_prefs.json')
+            # Prepare avatars temp file for UI to read current list
             try:
-                prefs_data = {}
-                if os.path.exists(prefs_file):
-                    with open(prefs_file, 'r', encoding='utf-8') as f:
-                        prefs_data = json.load(f)
-                
-                prefs = context.preferences.addons[__name__].preferences
-                prefs_data['dev_mode'] = prefs.dev_mode
-                prefs_data['email'] = prefs.login_email or ''
-                prefs_data['password'] = prefs.login_password or ''
-                
-                with open(prefs_file, 'w', encoding='utf-8') as f:
-                    json.dump(prefs_data, f)
+                fd, avatars_tmp = tempfile.mkstemp(prefix='rpm_avatars_', suffix='.json')
+                os.close(fd)
+                self._avatars_tmp_path = avatars_tmp
+                items = []
+                for it in prefs.avatar_items:
+                    items.append({'glb_url': it.glb_url, 'thumb_url': it.thumb_url, 'avatar_id': it.avatar_id})
+                with open(avatars_tmp, 'w', encoding='utf-8') as f:
+                    json.dump(items, f)
             except Exception as e:
-                print(f"RPM: Could not save dev_mode: {e}")
+                print(f"RPM: Failed to prepare avatars temp file: {e}")
             
             # Start webview in subprocess
             helper_path = os.path.join(addon_dir, 'rpm_ui_webview.py')
@@ -214,6 +301,19 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
             # Unbuffer Python IO for real-time logging from child
             env['PYTHONUNBUFFERED'] = '1'
             env['PYTHONIOENCODING'] = 'utf-8'
+            # Pass prefs and defaults via env
+            env['RPM_PREFS_EMAIL'] = prefs.login_email or ''
+            env['RPM_PREFS_PASSWORD'] = prefs.login_password or ''
+            env['RPM_DEV_MODE'] = '1' if prefs.dev_mode else '0'
+            # UI defaults: use ReadyPlayerMeImporter operator defaults (single source of truth)
+            dq, dt, da, de, ds = 'high', '1', '1', '1', '1024'
+            env['RPM_DEFAULT_QUALITY'] = dq
+            env['RPM_DEFAULT_TPOSE'] = dt
+            env['RPM_DEFAULT_ARKIT'] = da
+            env['RPM_DEFAULT_ATLAS'] = de
+            env['RPM_DEFAULT_ATLAS_SIZE'] = ds
+            if getattr(self, '_avatars_tmp_path', None):
+                env['RPM_AVATARS_PATH'] = self._avatars_tmp_path
             
             self._webview_process = subprocess.Popen(
                 [cmd, helper_path],
@@ -264,6 +364,11 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
             except:
                 pass
         print("RPM: UI webview closed")
+        try:
+            if getattr(self, '_avatars_tmp_path', None) and os.path.exists(self._avatars_tmp_path):
+                os.remove(self._avatars_tmp_path)
+        except Exception:
+            pass
 
 class ReadyPlayerMeImporter(bpy.types.Operator):
     """RPM Native Import"""
@@ -455,12 +560,19 @@ def register():
     bpy.types.TOPBAR_MT_file_import.prepend(menu_func_import)
     global preview_col
     preview_col = previews.new()
+    # Restore preferences from config backup if they were lost on disable
     try:
-        _load_prefs_from_disk()
-    except Exception:
-        pass
+        _restore_prefs_from_config()
+    except Exception as e:
+        print(f'RPM: Error restoring preferences: {e}')
 
 def unregister():
+    # Backup preferences before unregistering (survives disable/enable)
+    try:
+        _backup_prefs_to_config()
+    except Exception as e:
+        print(f'RPM: Error backing up preferences: {e}')
+    
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.utils.unregister_class(RPM_OT_InstallDependenciesModal)
     bpy.utils.unregister_class(ReadyPlayerMePreferences)

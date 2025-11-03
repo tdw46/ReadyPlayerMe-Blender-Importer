@@ -8,34 +8,21 @@ import threading
 
 print('RPM UI helper: starting')
 
-# Setup debug logging - clear log on startup
-def log_debug(msg):
-    """Write debug messages to a log file"""
-    try:
-        log_file = os.path.join(os.path.dirname(__file__), 'rpm_ui_debug.log')
-        with open(log_file, 'a', encoding='utf-8') as f:
-            import datetime
-            timestamp = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            f.write(f'[{timestamp}] {msg}\n')
-            f.flush()
-    except:
-        pass
-
-# Clear old log on startup
-try:
-    log_file = os.path.join(os.path.dirname(__file__), 'rpm_ui_debug.log')
-    if os.path.exists(log_file):
-        os.remove(log_file)
-except:
-    pass
-
-log_debug('=== RPM UI Helper Starting ===')
-
 class UIApi:
     def __init__(self):
         self._window = None
         self._addon_name = os.environ.get('RPM_ADDON_NAME', '')
         self._refresh_progress = {'message': 'Idle', 'percent': 0, 'complete': True, 'error': None}
+        self._avatars_path = os.environ.get('RPM_AVATARS_PATH', '')
+        self._init_email = os.environ.get('RPM_PREFS_EMAIL', '')
+        self._init_password = os.environ.get('RPM_PREFS_PASSWORD', '')
+        self._defaults = {
+            'quality': os.environ.get('RPM_DEFAULT_QUALITY', 'high'),
+            't_pose': os.environ.get('RPM_DEFAULT_TPOSE', '1') == '1',
+            'arkit_shapes': os.environ.get('RPM_DEFAULT_ARKIT', '1') == '1',
+            'enable_texture_atlas': os.environ.get('RPM_DEFAULT_ATLAS', '1') == '1',
+            'texture_atlas_size': os.environ.get('RPM_DEFAULT_ATLAS_SIZE', '1024'),
+        }
     
     def set_window(self, window):
         self._window = window
@@ -43,16 +30,7 @@ class UIApi:
     def get_credentials(self):
         """Get saved credentials"""
         try:
-            addon_dir = os.path.dirname(__file__)
-            prefs_file = os.path.join(addon_dir, 'rpm_prefs.json')
-            if os.path.exists(prefs_file):
-                with open(prefs_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    return {
-                        'email': data.get('email', ''),
-                        'password': data.get('password', '')
-                    }
-            return {'email': '', 'password': ''}
+            return {'email': self._init_email or '', 'password': self._init_password or ''}
         except Exception as e:
             print(f'RPM UI: get_credentials error: {e}')
             return {'email': '', 'password': ''}
@@ -60,24 +38,15 @@ class UIApi:
     def save_credentials(self, email, password):
         """Save credentials to prefs"""
         try:
+            # Write a request file for Blender main process to update AddonPreferences
             addon_dir = os.path.dirname(__file__)
-            prefs_file = os.path.join(addon_dir, 'rpm_prefs.json')
-            
-            data = {}
-            if os.path.exists(prefs_file):
-                try:
-                    with open(prefs_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                except:
-                    pass
-            
-            data['email'] = email
-            data['password'] = password
-            
-            with open(prefs_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f)
-            
-            print('RPM UI: Credentials saved')
+            req_file = os.path.join(addon_dir, 'rpm_prefs_request.json')
+            with open(req_file, 'w', encoding='utf-8') as f:
+                json.dump({'type': 'save_credentials', 'email': email or '', 'password': password or ''}, f)
+            print('RPM UI: Credentials save request written')
+            # Update local cached values so UI reflects change immediately
+            self._init_email = email or ''
+            self._init_password = password or ''
             return True
         except Exception as e:
             print(f'RPM UI: save_credentials error: {e}')
@@ -110,7 +79,6 @@ class UIApi:
         print('RPM UI: ========================================')
         print('RPM UI: REFRESH AVATARS STARTED')
         print('RPM UI: ========================================')
-        log_debug('=== refresh_avatars called ===')
         
         # Reset progress tracking
         self._last_reported_percent = -1
@@ -138,18 +106,9 @@ class UIApi:
                 self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 0, 'complete': True, 'error': 'Python not found'}
                 return
             
-            # Get prefs
-            prefs_file = os.path.join(addon_dir, 'rpm_prefs.json')
-            email = ''
-            password = ''
-            if os.path.exists(prefs_file):
-                try:
-                    with open(prefs_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        email = data.get('email', '')
-                        password = data.get('password', '')
-                except:
-                    pass
+            # Get prefs from env/in-memory (provided by Blender main process)
+            email = self._init_email or ''
+            password = self._init_password or ''
             
             env = os.environ.copy()
             env['RPM_OUTPUT_PATH'] = out_path
@@ -158,16 +117,8 @@ class UIApi:
             env['RPM_WV_PASSWORD'] = password
             env['RPM_PROGRESS_PATH'] = progress_path
             
-            # Check dev mode
-            dev_mode = False
-            try:
-                # Read dev mode from prefs
-                if os.path.exists(prefs_file):
-                    with open(prefs_file, 'r', encoding='utf-8') as f:
-                        prefs_data = json.load(f)
-                        dev_mode = prefs_data.get('dev_mode', False)
-            except:
-                pass
+            # Check dev mode from env passed by Blender
+            dev_mode = os.environ.get('RPM_DEV_MODE', '0') == '1'
             
             env['RPM_DEV_MODE'] = '1' if dev_mode else '0'
             
@@ -176,7 +127,6 @@ class UIApi:
             # Run the webview helper in background thread to not block UI
             def run_helper():
                 import time
-                log_debug('run_helper: Starting background thread')
                 
                 # Capture child output and forward to this process stdout
                 proc = subprocess.Popen(
@@ -204,7 +154,6 @@ class UIApi:
                 
                 print(f'RPM UI: Started helper process PID={proc.pid}')
                 sys.stdout.flush()
-                log_debug(f'run_helper: Started helper process PID={proc.pid}')
                 
                 # Poll for progress updates with timeout
                 start_time = time.time()
@@ -227,18 +176,16 @@ class UIApi:
                                 self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': percent, 'complete': False, 'error': None}
                                 if percent != last_percent:
                                     print(f'RPM UI: Progress update: {percent}%')
-                                    log_debug(f'run_helper: Progress update: {percent}%')
                                     last_percent = percent
                         except Exception as e:
                             # Avoid spamming the console for transient partial writes
-                            log_debug(f'run_helper: Failed to read progress: {e}')
+                            pass
                     time.sleep(0.2)
                 
                 # Wait for completion
                 return_code = proc.wait()
                 print(f'RPM UI: Helper process completed with return code: {return_code}')
                 sys.stdout.flush()
-                log_debug(f'run_helper: Helper process completed with return_code={return_code}')
                 
                 self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 95, 'complete': False, 'error': None}
                 print(f'RPM UI: Checking for output file: {out_path}')
@@ -254,48 +201,42 @@ class UIApi:
                     if os.path.exists(out_path):
                         file_found = True
                         print(f'RPM UI: Output file found on attempt {attempt + 1}')
-                        log_debug(f'run_helper: Output file found on attempt {attempt + 1}')
                         break
                     time.sleep(0.2)
                 
                 # Read the result
                 if file_found:
-                    log_debug('run_helper: Reading output file...')
                     try:
                         with open(out_path, 'r', encoding='utf-8') as f:
                             data = json.load(f)
                             print(f'RPM UI: Read data type: {data.get("type")}')
-                            log_debug(f'run_helper: Read data type: {data.get("type")}')
                             if data.get('type') == 'list':
                                 items = data.get('items', [])
-                                # Save to prefs
-                                avatar_items = []
-                                for it in items:
-                                    avatar_items.append({
+                                avatar_items = [
+                                    {
                                         'glb_url': it.get('glb', ''),
                                         'thumb_url': it.get('thumb', ''),
                                         'avatar_id': it.get('id', '')
-                                    })
-                                
-                                # Update prefs file
-                                prefs_data = {}
-                                if os.path.exists(prefs_file):
-                                    try:
-                                        with open(prefs_file, 'r', encoding='utf-8') as f:
-                                            prefs_data = json.load(f)
-                                    except:
-                                        pass
-                                
-                                prefs_data['avatar_items'] = avatar_items
-                                
-                                with open(prefs_file, 'w', encoding='utf-8') as f:
-                                    json.dump(prefs_data, f, indent=2)
-                                
-                                print(f'RPM UI: Saved {len(avatar_items)} avatars to prefs file: {prefs_file}')
-                                print(f'RPM UI: First avatar: {avatar_items[0] if avatar_items else "none"}')
-                                sys.stdout.flush()
-                                log_debug(f'run_helper: Saved {len(avatar_items)} avatars to prefs file')
-                                log_debug(f'run_helper: First avatar: {avatar_items[0] if avatar_items else "none"}')
+                                    } for it in items
+                                ]
+                                # Update shared avatars file if provided
+                                try:
+                                    if self._avatars_path:
+                                        with open(self._avatars_path, 'w', encoding='utf-8') as af:
+                                            json.dump(avatar_items, af, indent=2)
+                                        print(f'RPM UI: Wrote {len(avatar_items)} avatars to shared file')
+                                    else:
+                                        print('RPM UI: No shared avatars path set; avatars will not persist')
+                                except Exception as ee:
+                                    print(f'RPM UI: Failed to write shared avatars file: {ee}')
+                                # Write an update request for Blender main process
+                                try:
+                                    addon_dir2 = os.path.dirname(__file__)
+                                    upd_file = os.path.join(addon_dir2, 'rpm_avatar_update.json')
+                                    with open(upd_file, 'w', encoding='utf-8') as uf:
+                                        json.dump({'type': 'avatar_update', 'items': avatar_items}, uf)
+                                except Exception as ee:
+                                    print(f'RPM UI: Failed to write avatar update request: {ee}')
                                 
                                 # Signal completion with success flag
                                 self._refresh_progress = {
@@ -307,7 +248,6 @@ class UIApi:
                                 }
                                 print('RPM UI: *** REFRESH COMPLETE - Avatars should reload now ***')
                                 sys.stdout.flush()
-                                log_debug('run_helper: Set progress to 100% with reload flag')
                             elif data.get('type') == 'error':
                                 error_msg = data.get('message', 'Unknown error')
                                 self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 0, 'complete': True, 'error': error_msg}
@@ -337,7 +277,6 @@ class UIApi:
                         print(f'RPM UI: Could not list temp dir: {e}')
                         sys.stdout.flush()
                     self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 0, 'complete': True, 'error': 'Output file not created'}
-                    log_debug('run_helper: ERROR - Output file not created')
                 
                 # Cleanup progress file
                 try:
@@ -361,17 +300,13 @@ class UIApi:
     def get_avatars(self):
         """Get current avatars list from prefs"""
         try:
-            addon_dir = os.path.dirname(__file__)
-            prefs_file = os.path.join(addon_dir, 'rpm_prefs.json')
-            
-            if os.path.exists(prefs_file):
-                with open(prefs_file, 'r', encoding='utf-8') as f:
+            # Preferred path: read from shared temp file provided by Blender
+            if self._avatars_path and os.path.exists(self._avatars_path):
+                with open(self._avatars_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    avatar_count = len(data.get('avatar_items', []))
-                    print(f'RPM UI: Loading {avatar_count} avatars from prefs file')
-                    return data.get('avatar_items', [])
-            
-            print('RPM UI: No prefs file found, returning empty avatar list')
+                    print(f'RPM UI: Loading {len(data)} avatars from shared file')
+                    return data
+            print('RPM UI: No shared avatars file, returning empty avatar list')
             return []
         except Exception as e:
             print(f'RPM UI: get_avatars error: {e}')
@@ -380,21 +315,7 @@ class UIApi:
     def get_defaults(self):
         """Get default property values from Blender"""
         try:
-            addon_dir = os.path.dirname(__file__)
-            defaults_file = os.path.join(addon_dir, 'rpm_ui_defaults.json')
-            
-            if os.path.exists(defaults_file):
-                with open(defaults_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            
-            # Fallback defaults
-            return {
-                'quality': 'high',
-                't_pose': True,
-                'arkit_shapes': True,
-                'enable_texture_atlas': True,
-                'texture_atlas_size': '1024'
-            }
+            return dict(self._defaults)
         except Exception as e:
             print(f'RPM UI: get_defaults error: {e}')
             return {}
