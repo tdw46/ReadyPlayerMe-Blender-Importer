@@ -116,21 +116,6 @@ This extension requires:
 
 ## Technical Details
 
-### File Structure
-
-```
-ReadyPlayerMe-Blender-Importer/
-├── blender_manifest.toml    # Extension metadata
-├── __init__.py              # Main addon code
-├── rpm_ui.html              # Webview UI interface
-├── rpm_ui_webview.py        # Webview UI handler
-├── rpm_webview_helper.py    # Avatar refresh helper
-├── rpm_inject.js            # JavaScript injection for avatar scraping
-├── resources/
-│   └── RPM_logo.png         # Addon logo
-└── README.md                # This file
-```
-
 ### Blender 4.5+ Extensions
 
 This addon is built for the new Blender 4.5+ extensions platform:
@@ -140,14 +125,10 @@ This addon is built for the new Blender 4.5+ extensions platform:
 - Follows extension naming conventions
 - Proper permission declarations
 
-## License
-
-MIT License - See LICENSE file for details
 
 ## Support
 
-For issues, feature requests, or contributions:
-- GitHub: https://github.com/quarkworks-inc/hallway
+For issues, feature requests, or contributions: GitHub
 
 ## Credits
 
