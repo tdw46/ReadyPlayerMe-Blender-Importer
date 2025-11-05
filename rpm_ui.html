@@ -219,8 +219,17 @@
         }
         
         .refresh-icon-btn:disabled {
-            opacity: 0.5;
+            opacity: 0.3;
             cursor: not-allowed;
+            background: rgba(100, 100, 100, 0.1);
+            border-color: rgba(100, 100, 100, 0.2);
+            color: rgba(150, 150, 150, 0.5);
+        }
+        
+        .refresh-icon-btn:disabled:hover {
+            background: rgba(100, 100, 100, 0.1);
+            border-color: rgba(100, 100, 100, 0.2);
+            transform: none;
         }
         
         .refresh-icon-btn:disabled svg {
@@ -231,7 +240,7 @@
             position: absolute;
             top: 20px;
             right: 20px;
-            z-index: 1000;
+            z-index: 9999;
         }
         
         .profile-icon {
@@ -277,14 +286,15 @@
             position: absolute;
             top: 50px;
             right: 0;
-            background: linear-gradient(180deg, rgba(0,0,0,0.95) 0%, rgba(30,30,50,0.95) 100%);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(30, 30, 40, 0.98);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.15);
             border-radius: 12px;
             padding: 20px;
-            min-width: 280px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            width: 280px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
             display: none;
+            z-index: 10000;
         }
         
         .dropdown-menu.show {
@@ -304,6 +314,12 @@
             color: rgba(255,255,255,0.7);
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            transition: all 0.3s;
+        }
+        
+        .dropdown-title.error {
+            color: #ef4444;
+            text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
         }
         
         .dropdown-input {
@@ -315,12 +331,31 @@
             border-radius: 6px;
             font-size: 13px;
             margin-bottom: 8px;
+            transition: all 0.3s;
         }
         
         .dropdown-input:focus {
             outline: none;
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
+        
+        .dropdown-input.error {
+            background: rgba(220, 38, 38, 0.15);
+            border: 2px solid #ef4444;
+            color: #fca5a5;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+            animation: inputShake 0.5s;
+        }
+        
+        .dropdown-input.error::placeholder {
+            color: #fca5a5;
+        }
+        
+        @keyframes inputShake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
+            20%, 40%, 60%, 80% { transform: translateX(3px); }
         }
         
         .save-btn {
@@ -340,6 +375,49 @@
         .save-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(56, 239, 125, 0.4);
+        }
+        
+        .logout-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #f5576c 0%, #c0392b 100%);
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 8px;
+        }
+        
+        .logout-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+        }
+        
+        .login-error {
+            background: rgba(220, 38, 38, 0.2);
+            border: 1px solid rgba(220, 38, 38, 0.5);
+            color: #fca5a5;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 12px;
+            text-align: center;
+            font-weight: 600;
+            display: none;
+        }
+        
+        .login-error.show {
+            display: block;
+            animation: errorShake 0.5s;
+        }
+        
+        @keyframes errorShake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
         }
         
         .avatars-grid {
@@ -416,6 +494,25 @@
             font-size: 14px;
         }
         
+        .empty-state.error {
+            color: #ef4444;
+            font-size: 18px;
+            font-weight: 600;
+            animation: errorPulse 2s ease-in-out infinite;
+            text-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+        }
+        
+        @keyframes errorPulse {
+            0%, 100% { 
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% { 
+                opacity: 0.7;
+                transform: scale(1.05);
+            }
+        }
+        
         #avatarsContainer.empty-state {
             display: flex;
             flex-direction: column;
@@ -455,10 +552,12 @@
     <div class="profile-menu">
         <div id="profileContainer"></div>
         <div class="dropdown-menu" id="dropdownMenu">
-            <div class="dropdown-title">Login Credentials</div>
+            <div class="dropdown-title" id="dropdownTitle">Login Credentials</div>
+            <div class="login-error" id="loginError">Username or Password Incorrect!</div>
             <input type="email" class="dropdown-input" id="loginEmail" placeholder="Email" onkeypress="if(event.key==='Enter') saveCredentials()">
             <input type="password" class="dropdown-input" id="loginPassword" placeholder="Password" onkeypress="if(event.key==='Enter') saveCredentials()">
             <button class="save-btn" onclick="saveCredentials()" id="saveCredsBtn">💾 Save Credentials</button>
+            <button class="logout-btn" onclick="logout()" id="logoutBtn">🚪 Logout</button>
         </div>
     </div>
     
@@ -531,6 +630,18 @@
     <script>
         let currentEmail = '';
         
+        // Pipe console.log to Blender console for debugging
+        (function() {
+            var originalLog = console.log;
+            console.log = function() {
+                originalLog.apply(console, arguments);
+                try {
+                    var message = Array.prototype.slice.call(arguments).join(' ');
+                    window.pywebview.api.console_log(message);
+                } catch(e) {}
+            };
+        })();
+        
         // Update atlas size visibility
         document.getElementById('textureAtlas').addEventListener('change', function() {
             document.getElementById('atlasRow').style.display = this.checked ? 'flex' : 'none';
@@ -542,10 +653,91 @@
             dropdown.classList.toggle('show');
         }
         
-        // Close dropdown when clicking outside
+        // Show login error
+        function showLoginError(message) {
+            const errorEl = document.getElementById('loginError');
+            const dropdown = document.getElementById('dropdownMenu');
+            const dropdownTitle = document.getElementById('dropdownTitle');
+            const emailInput = document.getElementById('loginEmail');
+            const passwordInput = document.getElementById('loginPassword');
+            
+            console.log('=== showLoginError CALLED ===');
+            console.log('Message:', message);
+            console.log('Dropdown element:', dropdown);
+            console.log('Dropdown current display:', window.getComputedStyle(dropdown).display);
+            
+            // Set error message
+            errorEl.textContent = message || 'Username or Password Incorrect!';
+            
+            // Clear password field
+            passwordInput.value = '';
+            
+            // Show error
+            errorEl.classList.add('show');
+            
+            // Add error class to inputs and title
+            emailInput.classList.add('error');
+            passwordInput.classList.add('error');
+            dropdownTitle.classList.add('error');
+            dropdownTitle.textContent = '⚠️ LOGIN ERROR';
+            
+            // AGGRESSIVELY FORCE DROPDOWN TO OPEN - Multiple methods
+            // Remove any existing 'show' class first
+            dropdown.classList.remove('show');
+            
+            // Force immediate reflow
+            void dropdown.offsetWidth;
+            
+            // Add show class
+            dropdown.classList.add('show');
+            
+            // Force display via inline style (highest priority)
+            dropdown.style.display = 'block';
+            dropdown.style.visibility = 'visible';
+            dropdown.style.opacity = '1';
+            
+            console.log('After forcing open:');
+            console.log('  classList:', dropdown.classList.toString());
+            console.log('  display:', dropdown.style.display);
+            console.log('  computed display:', window.getComputedStyle(dropdown).display);
+            
+            // Remove error class when user starts typing
+            function clearError() {
+                emailInput.classList.remove('error');
+                passwordInput.classList.remove('error');
+                dropdownTitle.classList.remove('error');
+                dropdownTitle.textContent = 'Login Credentials';
+                errorEl.classList.remove('show');
+                
+                // CRITICAL: Remove inline styles that were forcing dropdown open
+                dropdown.style.display = '';
+                dropdown.style.visibility = '';
+                dropdown.style.opacity = '';
+                
+                console.log('Error cleared - dropdown can now be closed normally');
+            }
+            
+            // Add one-time event listeners to clear error on input
+            emailInput.addEventListener('input', clearError, { once: true });
+            passwordInput.addEventListener('input', clearError, { once: true });
+            
+            // Also hide error banner after 10 seconds if not cleared by user
+            setTimeout(function() {
+                errorEl.classList.remove('show');
+            }, 10000);
+        }
+        
+        // Close dropdown when clicking outside (but not if there's an error showing)
         document.addEventListener('click', function(e) {
             const dropdown = document.getElementById('dropdownMenu');
             const profileContainer = document.getElementById('profileContainer');
+            const dropdownTitle = document.getElementById('dropdownTitle');
+            
+            // Don't close if there's an error state active
+            if (dropdownTitle && dropdownTitle.classList.contains('error')) {
+                return;
+            }
+            
             if (!dropdown.contains(e.target) && !profileContainer.contains(e.target)) {
                 dropdown.classList.remove('show');
             }
@@ -555,14 +747,29 @@
         function updateProfileDisplay(email) {
             currentEmail = email || '';
             const container = document.getElementById('profileContainer');
+            const refreshBtn = document.getElementById('refreshBtn');
             
             if (!currentEmail) {
                 // Show login button
                 container.innerHTML = '<button class="login-btn" onclick="toggleDropdown()">Login</button>';
+                // Disable refresh button when logged out
+                if (refreshBtn) {
+                    refreshBtn.disabled = true;
+                    refreshBtn.style.opacity = '0.3';
+                    refreshBtn.style.cursor = 'not-allowed';
+                    refreshBtn.title = 'Please login to refresh avatars';
+                }
             } else {
                 // Show profile icon with first letter
                 const firstLetter = currentEmail.charAt(0).toUpperCase();
                 container.innerHTML = '<div class="profile-icon" onclick="toggleDropdown()">' + firstLetter + '</div>';
+                // Enable refresh button when logged in
+                if (refreshBtn) {
+                    refreshBtn.disabled = false;
+                    refreshBtn.style.opacity = '1';
+                    refreshBtn.style.cursor = 'pointer';
+                    refreshBtn.title = 'Refresh avatars from your account';
+                }
             }
         }
         
@@ -570,6 +777,10 @@
             const email = document.getElementById('loginEmail').value.trim();
             const password = document.getElementById('loginPassword').value.trim();
             const saveBtn = document.getElementById('saveCredsBtn');
+            const dropdownTitle = document.getElementById('dropdownTitle');
+            const errorEl = document.getElementById('loginError');
+            const emailInput = document.getElementById('loginEmail');
+            const passwordInput = document.getElementById('loginPassword');
             
             if (!email || !password) {
                 alert('Please enter both email and password');
@@ -578,35 +789,98 @@
             
             // Disable button while saving
             saveBtn.disabled = true;
+            saveBtn.innerHTML = '💾 Saving...';
             
             try {
                 window.pywebview.api.save_credentials(email, password).then(function() {
-                    // Show checkmark on button
-                    saveBtn.innerHTML = '✓ Saved!';
-                    saveBtn.style.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+                    // Success - clear all error states
+                    const dropdown = document.getElementById('dropdownMenu');
+                    
+                    emailInput.classList.remove('error');
+                    passwordInput.classList.remove('error');
+                    dropdownTitle.classList.remove('error');
+                    dropdownTitle.textContent = 'Login Credentials';
+                    errorEl.classList.remove('show');
+                    
+                    // CRITICAL: Remove inline styles that were forcing dropdown open
+                    dropdown.style.display = '';
+                    dropdown.style.visibility = '';
+                    dropdown.style.opacity = '';
+                    
+                    console.log('Credentials saved - error state cleared, dropdown can close');
                     
                     updateProfileDisplay(email);
+                    saveBtn.innerHTML = '✓ Saved!';
+                    setTimeout(function() {
+                        saveBtn.innerHTML = '💾 Save Credentials';
+                        saveBtn.disabled = false;
+                    }, 1500);
+                }).catch(function(err) {
+                    console.error('Error saving credentials:', err);
+                    alert('Failed to save credentials');
+                    saveBtn.innerHTML = '💾 Save Credentials';
+                    saveBtn.disabled = false;
+                });
+            } catch(e) {
+                console.error('Failed to save credentials:', e);
+                saveBtn.innerHTML = '💾 Save Credentials';
+                saveBtn.disabled = false;
+            }
+        }
+        
+        function logout() {
+            const logoutBtn = document.getElementById('logoutBtn');
+            
+            if (!confirm('Are you sure you want to logout? This will clear all avatars and credentials.')) {
+                return;
+            }
+            
+            // Disable button while logging out
+            logoutBtn.disabled = true;
+            logoutBtn.innerHTML = '🔄 Logging out...';
+            
+            try {
+                window.pywebview.api.logout().then(function() {
+                    // Clear UI
+                    document.getElementById('loginEmail').value = '';
+                    document.getElementById('loginPassword').value = '';
+                    updateProfileDisplay('');
+                    
+                    // Clear avatars grid
+                    const container = document.getElementById('avatarsContainer');
+                    container.className = 'empty-state';
+                    container.innerHTML = 'No avatars found. Click "Refresh My Avatars".';
+                    
+                    // Show success
+                    logoutBtn.innerHTML = '✓ Logged Out!';
                     
                     // Close dropdown after brief delay
                     setTimeout(function() {
                         toggleDropdown();
                         // Reset button
-                        saveBtn.innerHTML = '💾 Save Credentials';
-                        saveBtn.style.background = '';
-                        saveBtn.disabled = false;
+                        logoutBtn.innerHTML = '🚪 Logout';
+                        logoutBtn.disabled = false;
                     }, 800);
                 }).catch(function(err) {
-                    console.error('Error saving credentials:', err);
-                    alert('Failed to save credentials');
-                    saveBtn.disabled = false;
+                    console.error('Error logging out:', err);
+                    alert('Failed to logout');
+                    logoutBtn.innerHTML = '🚪 Logout';
+                    logoutBtn.disabled = false;
                 });
             } catch(e) {
-                console.error('Failed to save credentials:', e);
-                saveBtn.disabled = false;
+                console.error('Failed to logout:', e);
+                logoutBtn.innerHTML = '🚪 Logout';
+                logoutBtn.disabled = false;
             }
         }
         
         function refreshAvatars() {
+            // Check if user is logged in
+            if (!currentEmail) {
+                alert('Please login first to refresh avatars.');
+                return;
+            }
+            
             const container = document.getElementById('avatarsContainer');
             const refreshBtn = document.getElementById('refreshBtn');
             
@@ -635,8 +909,25 @@
                             refreshBtn.disabled = false;
                             refreshBtn.style.opacity = '1';
                             if (progress.error) {
-                                container.className = 'empty-state';
-                                container.innerHTML = 'Error: ' + progress.error;
+                                console.log('Error received:', progress.error);
+                                // Check if this is a login error (match various error messages)
+                                var errorLower = progress.error.toLowerCase();
+                                if (errorLower.indexOf('username') !== -1 || 
+                                    errorLower.indexOf('password') !== -1 ||
+                                    errorLower.indexOf('incorrect') !== -1 ||
+                                    errorLower.indexOf('invalid') !== -1 ||
+                                    errorLower.indexOf('credentials') !== -1 ||
+                                    errorLower.indexOf('login') !== -1) {
+                                    // Show login error popup
+                                    console.log('Login error detected, calling showLoginError()');
+                                    showLoginError(progress.error);
+                                    container.className = 'empty-state error';
+                                    container.innerHTML = '🚨 Login Failed!<br><br>Please update your credentials in the profile menu.';
+                                } else {
+                                    console.log('Non-login error detected');
+                                    container.className = 'empty-state error';
+                                    container.innerHTML = '⚠️ Error: ' + progress.error;
+                                }
                             } else if (progress.reload) {
                                 // Success - reload avatars from prefs
                                 console.log('Refresh completed successfully, reloading avatars...');

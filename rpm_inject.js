@@ -717,16 +717,48 @@
                                         
                                         createOverlay();
                                         
+                                        // Check if login succeeded after 3 seconds
                                         setTimeout(function() {
                                           try {
-                                            var host = location.host;
-                                            var choose = 'https://' + host + '/avatar/choose';
-                                            if(location.pathname !== '/avatar/choose') {
-                                              dbg('Redirecting to choose page: ' + choose);
-                                              location.href = choose;
+                                            var currentPath = location.pathname;
+                                            // If still on signin or authorize page, login failed
+                                            if(currentPath.indexOf('/avatar/signin') === 0 || currentPath.indexOf('/avatar/authorize') === 0) {
+                                              dbg('Still on signin/authorize page after 3s - subdomain login failed!');
+                                              var errorEls = document.querySelectorAll('[role=alert], .error, [class*=error], [class*=Error]');
+                                              var errorMsg = 'Username or Password Incorrect!';
+                                              if(errorEls.length > 0) {
+                                                for(var i = 0; i < errorEls.length; i++) {
+                                                  var txt = (errorEls[i].textContent || '').trim();
+                                                  if(txt) {
+                                                    dbg('Subdomain error message: ' + txt);
+                                                    errorMsg = txt;
+                                                    break;
+                                                  }
+                                                }
+                                              }
+                                              // Send login error back to API
+                                              try {
+                                                window.pywebview.api.on_list({type: 'error', message: errorMsg});
+                                                dbg('Subdomain login error reported, closing window...');
+                                                setTimeout(function() {
+                                                  try {
+                                                    window.pywebview.api.close_window();
+                                                  } catch(e) {}
+                                                }, 500);
+                                              } catch(e) {
+                                                dbg('Error reporting subdomain login failure: ' + e);
+                                              }
+                                            } else {
+                                              // Login succeeded, redirect to choose page
+                                              var host = location.host;
+                                              var choose = 'https://' + host + '/avatar/choose';
+                                              if(location.pathname !== '/avatar/choose') {
+                                                dbg('Redirecting to choose page: ' + choose);
+                                                location.href = choose;
+                                              }
                                             }
                                           } catch(__) {}
-                                        }, 1000);
+                                        }, 3000);
                                       } else {
                                         dbg('Submit button disabled or hidden, trying form.requestSubmit()');
                                         if(form && form.requestSubmit) {
@@ -871,17 +903,34 @@
                                               setTimeout(function() {
                                                 try {
                                                   if(location.pathname === '/signin') {
-                                                    dbg('Still on signin page after 2s - checking for errors');
+                                                    dbg('Still on signin page after 2s - login failed!');
                                                     var errorEls = document.querySelectorAll('[role=alert], .error, [class*=error], [class*=Error]');
+                                                    var errorMsg = 'Username or Password Incorrect!';
                                                     if(errorEls.length > 0) {
                                                       for(var i = 0; i < errorEls.length; i++) {
                                                         var txt = (errorEls[i].textContent || '').trim();
-                                                        if(txt) dbg('Error message found: ' + txt);
+                                                        if(txt) {
+                                                          dbg('Error message found: ' + txt);
+                                                          errorMsg = txt;
+                                                          break;
+                                                        }
                                                       }
+                                                    }
+                                                    // Send login error back to API
+                                                    try {
+                                                      window.pywebview.api.on_list({type: 'error', message: errorMsg});
+                                                      dbg('Login error reported, closing window...');
+                                                      setTimeout(function() {
+                                                        try {
+                                                          window.pywebview.api.close_window();
+                                                        } catch(e) {}
+                                                      }, 500);
+                                                    } catch(e) {
+                                                      dbg('Error reporting login failure: ' + e);
                                                     }
                                                   }
                                                 } catch(_) {}
-                                              }, 2000);
+                                              }, 3000);
                                             } else {
                                               dbg('Submit button is disabled or hidden, trying form.requestSubmit()');
                                               if(form && form.requestSubmit) {
@@ -963,7 +1012,7 @@
         if(!window.__rpmChoosePageHandled) {
           window.__rpmChoosePageHandled = true;
           
-          dbg('Choose page detected, checking for images...');
+          dbg('Choose page detected, waiting 500ms for avatars to load...');
           
           var attemptCollect = function(attempt) {
             try {
@@ -996,7 +1045,11 @@
             }
           };
           
-          attemptCollect(1);
+          // Wait 500ms before starting to collect avatars to let them all load
+          setTimeout(function() {
+            dbg('Starting avatar collection...');
+            attemptCollect(1);
+          }, 500);
         }
         return;
       } else if(/\.readyplayer\.me$/.test(h) && p.indexOf('/avatar') === 0) {

@@ -142,15 +142,137 @@ def _install_pywebview():
 PYWEBVIEW_OK = False
 preview_col = None
 
+class RPM_OT_PywebviewMissingDialog(bpy.types.Operator):
+    """Show dialog when pywebview is missing"""
+    bl_idname = "rpm.pywebview_missing_dialog"
+    bl_label = "pywebview Required"
+    bl_options = {'INTERNAL'}
+    
+    _timer = None
+    
+    def execute(self, context):
+        return {'FINISHED'}
+    
+    def modal(self, context, event):
+        if event.type == 'TIMER':
+            # Check if installation completed
+            wm = context.window_manager
+            if not wm.rpm_dep_install_running and _is_pywebview_available():
+                # Installation complete - close dialog after a moment
+                if not hasattr(self, '_completion_countdown'):
+                    self._completion_countdown = 3  # Show success for 3 timer ticks
+                self._completion_countdown -= 1
+                if self._completion_countdown <= 0:
+                    self.cancel(context)
+                    return {'FINISHED'}
+            
+            # Force UI redraw to update status
+            context.area.tag_redraw() if context.area else None
+            return {'PASS_THROUGH'}
+        
+        return {'PASS_THROUGH'}
+    
+    def invoke(self, context, event):
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.5, window=context.window)
+        wm.modal_handler_add(self)
+        return wm.invoke_props_dialog(self, width=450)
+    
+    def cancel(self, context):
+        wm = context.window_manager
+        if self._timer:
+            wm.event_timer_remove(self._timer)
+    
+    def draw(self, context):
+        layout = self.layout
+        wm = context.window_manager
+        
+        # Header
+        box = layout.box()
+        col = box.column(align=True)
+        col.label(text="Ready Player Me requires pywebview", icon='ERROR')
+        col.separator()
+        col.label(text="The pywebview package is not installed on your system.")
+        col.label(text="Click the button below to install it automatically.")
+        
+        layout.separator()
+        
+        # Installation section
+        install_box = layout.box()
+        col = install_box.column(align=True)
+        
+        installed = _is_pywebview_available()
+        
+        # Status indicator
+        status_row = col.row(align=True)
+        status_row.label(text="pywebview Status:", icon='DOT')
+        status_row.label(text="Installed" if installed else "Not Installed", 
+                        icon='CHECKMARK' if installed else 'CANCEL')
+        
+        col.separator()
+        
+        # Install button and status
+        if wm.rpm_dep_install_running:
+            col.label(text="Installing pywebview... Please wait.", icon='TIME')
+            if wm.rpm_dep_install_msg:
+                msg_box = col.box()
+                msg_box.scale_y = 0.8
+                # Split long messages into multiple lines
+                msg = wm.rpm_dep_install_msg[:200]
+                msg_box.label(text=msg)
+        elif installed:
+            col.label(text="Installation complete! You can now use Ready Player Me.", icon='CHECKMARK')
+            col.label(text="This dialog will close automatically...", icon='INFO')
+        else:
+            row = col.row()
+            row.scale_y = 1.5
+            row.operator(RPM_OT_InstallDependenciesModal.bl_idname, 
+                        text="Install pywebview", icon='IMPORT')
+            
+            if wm.rpm_dep_install_msg:
+                col.separator()
+                msg_box = col.box()
+                msg_box.scale_y = 0.8
+                msg_box.label(text=wm.rpm_dep_install_msg[:200], icon='INFO')
+        
+        layout.separator()
+        
+        # Help text
+        help_box = layout.box()
+        help_col = help_box.column(align=True)
+        help_col.label(text="Alternative: Install manually", icon='QUESTION')
+        help_col.label(text="Open a terminal and run: pip install pywebview")
+
 class RPM_OT_OpenUIWebview(bpy.types.Operator):
     """Open Ready Player Me UI in webview"""
     bl_idname = "rpm.webviewui"
     bl_label = "RPM WebviewUI"
+    bl_description = "Import Ready Player Me avatars (requires pywebview - install in addon preferences)"
     bl_options = {'REGISTER', 'INTERNAL'}
+    
+    @classmethod
+    def poll(cls, context):
+        """Only enable if pywebview is available"""
+        is_available = _is_pywebview_available()
+        # Set description based on availability
+        if not is_available:
+            cls.bl_description = "pywebview is required. Go to Edit > Preferences > Add-ons > Ready Player Me to install dependencies"
+        else:
+            cls.bl_description = "Import Ready Player Me avatars"
+        return is_available
     
     _timer = None
     _webview_process = None
     _ui_window = None
+    
+    def invoke(self, context, event):
+        """Handle invocation - show dialog if pywebview is missing"""
+        if not _is_pywebview_available():
+            # Show dialog with install option
+            bpy.ops.rpm.pywebview_missing_dialog('INVOKE_DEFAULT')
+            self.report({'WARNING'}, "pywebview is required - see dialog for installation")
+            return {'CANCELLED'}
+        return self.execute(context)
     
     def modal(self, context, event):
         if event.type == 'TIMER':
@@ -196,6 +318,25 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
                         p.login_email = data.get('email', '') or ''
                         p.login_password = data.get('password', '') or ''
                         print('RPM: Credentials updated in AddonPreferences')
+                        try:
+                            bpy.ops.wm.save_userpref()
+                            print('RPM: User preferences saved')
+                        except Exception as se:
+                            print('RPM: Could not save user preferences', se)
+                    elif isinstance(data, dict) and data.get('type') == 'logout':
+                        p = context.preferences.addons[__name__].preferences
+                        p.login_email = ''
+                        p.login_password = ''
+                        p.scraped_avatars_json = ''
+                        p.avatar_items.clear()
+                        print('RPM: Logged out - cleared credentials and avatars')
+                        # Clear the shared avatars temp file if it exists
+                        if getattr(self, '_avatars_tmp_path', None) and os.path.exists(self._avatars_tmp_path):
+                            try:
+                                with open(self._avatars_tmp_path, 'w', encoding='utf-8') as f:
+                                    json.dump([], f)
+                            except Exception as e:
+                                print(f'RPM: Error clearing avatars temp file: {e}')
                         try:
                             bpy.ops.wm.save_userpref()
                             print('RPM: User preferences saved')
@@ -251,9 +392,12 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
         return {'PASS_THROUGH'}
     
     def execute(self, context):
-        # Check pywebview
+        # Check pywebview - if called directly via Python
         if not _is_pywebview_available():
-            self.report({'ERROR'}, "pywebview not available. Install in addon preferences.")
+            self.report({'ERROR'}, "pywebview not available. Go to Edit > Preferences > Add-ons > Ready Player Me to install.")
+            print("RPM: pywebview is required but not installed.")
+            print("RPM: Please go to Edit > Preferences > Add-ons > Ready Player Me")
+            print("RPM: and click 'Install Required Packages' button.")
             return {'CANCELLED'}
         
         try:
@@ -538,12 +682,14 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
 
 def menu_func_import(self, context):
     print(f"RPM: menu_func_import called. PYWEBVIEW_OK={PYWEBVIEW_OK}")
+    # Operator will be automatically disabled via poll() if pywebview is not available
     self.layout.operator(RPM_OT_OpenUIWebview.bl_idname, text="Ready Player Me")
 
 
 def register():
     global PYWEBVIEW_OK
     bpy.utils.register_class(RPM_AvatarItem)
+    bpy.utils.register_class(RPM_OT_PywebviewMissingDialog)
     bpy.utils.register_class(RPM_OT_OpenUIWebview)
     bpy.utils.register_class(ReadyPlayerMeImporter)
     bpy.utils.register_class(ReadyPlayerMePreferences)
@@ -572,6 +718,7 @@ def unregister():
     bpy.utils.unregister_class(ReadyPlayerMePreferences)
     bpy.utils.unregister_class(ReadyPlayerMeImporter)
     bpy.utils.unregister_class(RPM_OT_OpenUIWebview)
+    bpy.utils.unregister_class(RPM_OT_PywebviewMissingDialog)
     bpy.utils.unregister_class(RPM_AvatarItem)
     try:
         del bpy.types.WindowManager.rpm_dep_install_running

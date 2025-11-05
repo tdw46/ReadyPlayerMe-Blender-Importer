@@ -27,6 +27,14 @@ class UIApi:
     def set_window(self, window):
         self._window = window
     
+    def console_log(self, message):
+        """Pipe JavaScript console logs to Blender console"""
+        try:
+            print(f'RPM UI JS> {message}')
+            sys.stdout.flush()
+        except Exception as e:
+            pass
+    
     def get_credentials(self):
         """Get saved credentials"""
         try:
@@ -50,6 +58,31 @@ class UIApi:
             return True
         except Exception as e:
             print(f'RPM UI: save_credentials error: {e}')
+            return False
+    
+    def logout(self):
+        """Clear credentials and avatars"""
+        try:
+            # Write a logout request file for Blender main process
+            addon_dir = os.path.dirname(__file__)
+            req_file = os.path.join(addon_dir, 'rpm_prefs_request.json')
+            with open(req_file, 'w', encoding='utf-8') as f:
+                json.dump({'type': 'logout'}, f)
+            print('RPM UI: Logout request written')
+            # Update local cached values so UI reflects change immediately
+            self._init_email = ''
+            self._init_password = ''
+            # Clear avatars file if it exists
+            if self._avatars_path and os.path.exists(self._avatars_path):
+                try:
+                    with open(self._avatars_path, 'w', encoding='utf-8') as f:
+                        json.dump([], f)
+                    print('RPM UI: Cleared avatars file')
+                except Exception as e:
+                    print(f'RPM UI: Error clearing avatars file: {e}')
+            return True
+        except Exception as e:
+            print(f'RPM UI: logout error: {e}')
             return False
     
     def get_refresh_progress(self):
@@ -252,6 +285,8 @@ class UIApi:
                                 error_msg = data.get('message', 'Unknown error')
                                 self._refresh_progress = {'message': 'Retrieving Avatar Data...', 'percent': 0, 'complete': True, 'error': error_msg}
                                 print(f'RPM UI: Refresh error: {error_msg}')
+                                print(f'RPM UI: Error type detected - will show login popup in UI')
+                                sys.stdout.flush()
                         
                         try:
                             os.remove(out_path)

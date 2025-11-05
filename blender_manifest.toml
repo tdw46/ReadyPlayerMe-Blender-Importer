@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "readyplayerme_blender_importer"
-version = "2.3.0"
+version = "2.3.3"
 name = "ReadyPlayerMe Blender Importer"
 tagline = "Import ReadyPlayerMe avatars directly into Blender"
 maintainer = "BeyondDev (Tyler Walker)"
