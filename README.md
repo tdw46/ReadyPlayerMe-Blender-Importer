@@ -2,9 +2,20 @@
 
 Import ReadyPlayerMe avatars directly into Blender with a modern webview-based UI.
 
+## Installation
+
+**Get the extension from Blender Extensions:** [ReadyPlayerMe Blender Importer](https://extensions.blender.org/approval-queue/readyplayerme-blender-importer/)
+
 ## Demo
 
 ![ReadyPlayerMe Blender Importer Demo](resources/RPM%20Blender%20Importer%20Demo.gif)
+
+## Video Tutorial
+
+<video width="100%" controls>
+  <source src="https://extensions.blender.org/media/videos/9c/9c0ceac85f2135631b48df1364033d29de15403c9eada83e6e91728ff299315f.mp4" type="video/mp4">
+  Your browser does not support the video tag. <a href="https://extensions.blender.org/media/videos/9c/9c0ceac85f2135631b48df1364033d29de15403c9eada83e6e91728ff299315f.mp4">Watch the tutorial video here</a>.
+</video>
 
 ## Features
 
