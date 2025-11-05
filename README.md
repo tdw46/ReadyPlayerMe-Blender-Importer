@@ -2,6 +2,10 @@
 
 Import ReadyPlayerMe avatars directly into Blender with a modern webview-based UI.
 
+## Demo
+
+![ReadyPlayerMe Blender Importer Demo](resources/RPM%20Blender%20Importer%20Demo.gif)
+
 ## Features
 
 - 🎨 Modern webview UI for browsing and importing avatars
