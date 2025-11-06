@@ -33,10 +33,10 @@ pywebview is bundled with the extension; no separate installation is required.
 
 ## Installation
 
-### Blender 4.5+ Extensions Platform
+### Blender 4.2+ Extensions Platform
 
 1. Download the addon as a ZIP file
-2. Open Blender 4.5+
+2. Open Blender 4.2+
 3. Go to **Edit > Preferences > Get Extensions**
 4. Click the dropdown menu (⋮) and select **Install from Disk**
 5. Navigate to the downloaded ZIP file and select it
@@ -115,9 +115,9 @@ This extension requires:
 
 ## Technical Details
 
-### Blender 4.5+ Extensions
+### Blender 4.2+ Extensions
 
-This addon is built for the new Blender 4.5+ extensions platform:
+This addon is built for the new Blender 4.2+ extensions platform:
 
 - Uses `blender_manifest.toml` instead of `bl_info` dict
 - Compatible with extension sandboxing
