@@ -15,34 +15,14 @@ import json
 import urllib.parse
 import subprocess
 import tempfile
-import shutil
 from bpy.utils import previews
 
-def _find_system_python_command():
-    candidates = []
-    if sys.platform.startswith('win'):
-        candidates.extend(['py', 'python', 'python3'])
-    else:
-        candidates.extend(['python3', 'python'])
-    for cmd in candidates:
-        if shutil.which(cmd):
-            return cmd
-    return None
-
 def _is_pywebview_available():
-    cmd = _find_system_python_command()
-    if not cmd:
-        return False
+    """Check if pywebview is available from bundled wheels."""
     try:
-        res = subprocess.run([cmd, '-c', 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("webview") else 1)'], capture_output=True, text=True, timeout=5)
-        if res.returncode == 0:
-            return True
-    except Exception:
-        pass
-    try:
-        res2 = subprocess.run([cmd, '-m', 'pip', 'show', 'pywebview'], capture_output=True, text=True, timeout=5)
-        return res2.returncode == 0
-    except Exception:
+        import webview
+        return True
+    except ImportError:
         return False
 
 def _get_config_backup_path():
@@ -128,16 +108,9 @@ def _restore_prefs_from_config():
         print(f'RPM: Failed to restore preferences: {e}')
 
 def _install_pywebview():
-    cmd = _find_system_python_command()
-    if not cmd:
-        return False, "No system Python found. Install Python first."
-    try:
-        res = subprocess.run([cmd, '-m', 'pip', 'install', '--user', 'pywebview'], capture_output=True, text=True)
-        ok = res.returncode == 0
-        msg = res.stdout if ok else (res.stderr or res.stdout)
-        return ok, msg
-    except Exception as e:
-        return False, str(e)
+    """No-op: pywebview is bundled with the extension as wheels."""
+    # Wheels are automatically installed by Blender when the extension is installed
+    return True, "pywebview is bundled with this extension."
 
 PYWEBVIEW_OK = False
 preview_col = None
@@ -190,10 +163,10 @@ class RPM_OT_PywebviewMissingDialog(bpy.types.Operator):
         # Header
         box = layout.box()
         col = box.column(align=True)
-        col.label(text="Ready Player Me requires pywebview", icon='ERROR')
+        col.label(text="Ready Player Me - pywebview Issue", icon='ERROR')
         col.separator()
-        col.label(text="The pywebview package is not installed on your system.")
-        col.label(text="Click the button below to install it automatically.")
+        col.label(text="The pywebview package could not be loaded.")
+        col.label(text="Please try restarting Blender or reinstalling the extension.")
         
         layout.separator()
         
@@ -240,14 +213,15 @@ class RPM_OT_PywebviewMissingDialog(bpy.types.Operator):
         # Help text
         help_box = layout.box()
         help_col = help_box.column(align=True)
-        help_col.label(text="Alternative: Install manually", icon='QUESTION')
-        help_col.label(text="Open a terminal and run: pip install pywebview")
+        help_col.label(text="Note:", icon='INFO')
+        help_col.label(text="pywebview is bundled with this extension.")
+        help_col.label(text="If issues persist, reinstall the extension from Preferences.")
 
 class RPM_OT_OpenUIWebview(bpy.types.Operator):
     """Open Ready Player Me UI in webview"""
     bl_idname = "rpm.webviewui"
     bl_label = "RPM WebviewUI"
-    bl_description = "Import Ready Player Me avatars (requires pywebview - install in addon preferences)"
+    bl_description = "Import Ready Player Me avatars"
     bl_options = {'REGISTER', 'INTERNAL'}
     
     @classmethod
@@ -256,7 +230,7 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
         is_available = _is_pywebview_available()
         # Set description based on availability
         if not is_available:
-            cls.bl_description = "pywebview is required. Go to Edit > Preferences > Add-ons > Ready Player Me to install dependencies"
+            cls.bl_description = "pywebview could not be loaded. Try restarting Blender or reinstalling the extension."
         else:
             cls.bl_description = "Import Ready Player Me avatars"
         return is_available
@@ -270,7 +244,7 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
         if not _is_pywebview_available():
             # Show dialog with install option
             bpy.ops.rpm.pywebview_missing_dialog('INVOKE_DEFAULT')
-            self.report({'WARNING'}, "pywebview is required - see dialog for installation")
+            self.report({'WARNING'}, "pywebview could not be loaded - please restart Blender")
             return {'CANCELLED'}
         return self.execute(context)
     
@@ -394,10 +368,9 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
     def execute(self, context):
         # Check pywebview - if called directly via Python
         if not _is_pywebview_available():
-            self.report({'ERROR'}, "pywebview not available. Go to Edit > Preferences > Add-ons > Ready Player Me to install.")
-            print("RPM: pywebview is required but not installed.")
-            print("RPM: Please go to Edit > Preferences > Add-ons > Ready Player Me")
-            print("RPM: and click 'Install Required Packages' button.")
+            self.report({'ERROR'}, "pywebview not available. Please restart Blender or reinstall the extension.")
+            print("RPM: pywebview could not be loaded from bundled wheels.")
+            print("RPM: Try restarting Blender or reinstalling the extension from Preferences.")
             return {'CANCELLED'}
         
         try:
@@ -424,12 +397,13 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
             except Exception as e:
                 print(f"RPM: Failed to prepare avatars temp file: {e}")
             
-            # Start webview in subprocess
+            # Start webview in subprocess using Blender's Python
             helper_path = os.path.join(addon_dir, 'rpm_ui_webview.py')
-            cmd = _find_system_python_command()
+            # Use Blender's Python executable which has access to bundled wheels
+            cmd = sys.executable
             
             if not cmd:
-                self.report({'ERROR'}, "No Python command found")
+                self.report({'ERROR'}, "Could not find Python executable")
                 return {'CANCELLED'}
             
             # Set env vars
@@ -575,7 +549,7 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
     
     def apply_pose_as_basis(context, aobj=None):
         if aobj is None:
-            aobj = bpy.context.active_object
+            aobj = context.active_object
 
         if aobj.data.shape_keys:
             act_sk = aobj.active_shape_key
@@ -643,9 +617,9 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
         bpy.ops.import_scene.gltf(filepath=filename)
 
         bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
-        bpy.context.view_layer.update()
+        context.view_layer.update()
 
-        armatures = [obj for obj in bpy.context.selected_objects if obj.type == 'ARMATURE']
+        armatures = [obj for obj in context.selected_objects if obj.type == 'ARMATURE']
         armature = armatures[0] if armatures else None
         armature.data.show_bone_custom_shapes = False
 
@@ -655,25 +629,25 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
             bpy.ops.object.select_all(action='DESELECT')
             for mesh in child_meshes:
                 mesh.select_set(True)
-            bpy.context.view_layer.objects.active = child_meshes[0]
+            context.view_layer.objects.active = child_meshes[0]
             bpy.ops.object.join()
 
         child_meshes = [obj for obj in armature.children if obj.type == 'MESH']
 
         if armatures and child_meshes:
             for mesh in child_meshes:
-                bpy.context.view_layer.objects.active = mesh
+                context.view_layer.objects.active = mesh
                 for modifier in mesh.modifiers:
                     if modifier.type == 'ARMATURE' and modifier.object == armature:
                         bpy.ops.object.modifier_apply_as_shapekey(keep_modifier=True, modifier=modifier.name)
                         break
                 if mesh.data.shape_keys:
-                    bpy.context.object.active_shape_key_index = len(mesh.data.shape_keys.key_blocks) - 1
+                    context.object.active_shape_key_index = len(mesh.data.shape_keys.key_blocks) - 1
                     self.apply_pose_as_basis(aobj=mesh)
                     mesh.data.shape_keys.key_blocks[1].name = "oldBasis"
                     mesh.data.shape_keys.key_blocks[0].name = "Basis"
-            bpy.context.view_layer.objects.active = armature
-            bpy.context.object.show_in_front = True
+            context.view_layer.objects.active = armature
+            context.object.show_in_front = True
             bpy.ops.object.posemode_toggle()
             bpy.ops.pose.armature_apply(selected=False)
 
@@ -788,11 +762,15 @@ class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
-        wm = context.window_manager
         installed = _is_pywebview_available()
+        
+        # Dependencies status
         deps = layout.box()
         r = deps.row(align=True)
-        r.label(text="pywebview", icon=('CHECKMARK' if installed else 'CANCEL'))
+        r.label(text="pywebview (bundled)", icon=('CHECKMARK' if installed else 'CANCEL'))
+        if not installed:
+            r = deps.row()
+            r.label(text="Not loaded - try restarting Blender", icon='ERROR')
 
         box = layout.box()
         box.prop(self, 'login_email')
@@ -802,19 +780,6 @@ class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
         dev_box.prop(self, 'dev_mode')
         if self.dev_mode:
             dev_box.label(text="Developer webview will be visible", icon='INFO')
-
-        if not installed:
-            ibox = layout.box()
-            if wm.rpm_dep_install_running:
-                ibox.label(text="Installing pywebview... This may take a minute.")
-                if wm.rpm_dep_install_msg:
-                    ibox.label(text=wm.rpm_dep_install_msg[:200])
-            else:
-                row = ibox.row()
-                row.enabled = not wm.rpm_dep_install_running
-                row.operator(RPM_OT_InstallDependenciesModal.bl_idname, text="Install Required Packages")
-                if wm.rpm_dep_install_msg:
-                    ibox.label(text=wm.rpm_dep_install_msg[:200])
 
 class RPM_OT_InstallDependenciesModal(bpy.types.Operator):
     bl_idname = "readyplayerme.install_dependencies_modal"
@@ -830,26 +795,13 @@ class RPM_OT_InstallDependenciesModal(bpy.types.Operator):
         wm = context.window_manager
         installed = _is_pywebview_available()
         if installed:
-            self.report({'INFO'}, "pywebview already installed.")
+            self.report({'INFO'}, "pywebview is already available from bundled wheels.")
+            wm.rpm_dep_install_msg = "pywebview is bundled with this extension."
             return {'CANCELLED'}
-        cmd = _find_system_python_command()
-        if not cmd:
-            wm.rpm_dep_install_msg = "No system Python found. Install Python first."
-            self.report({'ERROR'}, wm.rpm_dep_install_msg)
-            return {'CANCELLED'}
-        wm.rpm_dep_install_running = True
-        wm.rpm_dep_install_msg = "Starting install..."
-
-        def worker():
-            ok, msg = _install_pywebview()
-            self._ok = ok
-            self._msg = msg
-
-        self._thread = threading.Thread(target=worker, daemon=True)
-        self._thread.start()
-        self._timer = wm.event_timer_add(0.5, window=context.window)
-        context.window_manager.modal_handler_add(self)
-        return {'RUNNING_MODAL'}
+        # Wheels should be installed automatically by Blender
+        wm.rpm_dep_install_msg = "pywebview is bundled. Try restarting Blender."
+        self.report({'WARNING'}, wm.rpm_dep_install_msg)
+        return {'CANCELLED'}
 
     def modal(self, context, event):
         wm = context.window_manager
