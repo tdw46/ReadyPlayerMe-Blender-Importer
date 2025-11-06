@@ -5,25 +5,24 @@ Import ReadyPlayerMe avatars directly into Blender with a modern webview UI.
 This addon is compatible with Blender 4.5+ extensions platform.
 """
 
-import bpy
-import urllib.request
-import os
-from pathlib import Path
-import sys
-import threading
+import importlib.util
 import json
-import urllib.parse
+import os
 import subprocess
+import sys
 import tempfile
+import threading
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+import bpy
 from bpy.utils import previews
+
 
 def _is_pywebview_available():
     """Check if pywebview is available from bundled wheels."""
-    try:
-        import webview
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec("webview") is not None
 
 def _get_config_backup_path():
     """Get path to preferences backup file in Blender's config directory."""
@@ -42,12 +41,12 @@ def _backup_prefs_to_config():
         if not backup_path:
             print('RPM: Cannot determine config directory for backup')
             return
-        
+
         p = bpy.context.preferences.addons.get(__name__)
         if not p:
             return
         prefs = p.preferences
-        
+
         # Collect all preference data
         data = {
             'login_email': prefs.login_email or '',
@@ -63,7 +62,7 @@ def _backup_prefs_to_config():
                 for item in prefs.avatar_items
             ]
         }
-        
+
         # Write backup
         with open(backup_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
@@ -77,19 +76,19 @@ def _restore_prefs_from_config():
         backup_path = _get_config_backup_path()
         if not backup_path or not os.path.exists(backup_path):
             return
-        
-        with open(backup_path, 'r', encoding='utf-8') as f:
+
+        with open(backup_path, encoding='utf-8') as f:
             data = json.load(f)
-        
+
         p = bpy.context.preferences.addons[__name__].preferences
-        
+
         # Only restore if current prefs appear empty (to avoid overwriting manual edits)
         if not p.login_email and not p.avatar_items:
             p.login_email = data.get('login_email', '') or ''
             p.login_password = data.get('login_password', '') or ''
             p.dev_mode = data.get('dev_mode', False)
             p.scraped_avatars_json = data.get('scraped_avatars_json', '') or ''
-            
+
             # Restore avatar items
             p.avatar_items.clear()
             for item_data in data.get('avatar_items', []):
@@ -97,7 +96,7 @@ def _restore_prefs_from_config():
                 new_item.glb_url = item_data.get('glb_url', '') or ''
                 new_item.thumb_url = item_data.get('thumb_url', '') or ''
                 new_item.avatar_id = item_data.get('avatar_id', '') or ''
-            
+
             print(f'RPM: Restored {len(p.avatar_items)} avatars from config backup')
             # Save restored prefs back to userpref.blend
             try:
@@ -109,7 +108,7 @@ def _restore_prefs_from_config():
 
 def _install_pywebview():
     """No-op: pywebview is bundled with the extension as wheels."""
-    # Wheels are automatically installed by Blender when the extension is installed
+    # Wheels are automatically installed by Blender when extension is installed
     return True, "pywebview is bundled with this extension."
 
 PYWEBVIEW_OK = False
@@ -120,12 +119,12 @@ class RPM_OT_PywebviewMissingDialog(bpy.types.Operator):
     bl_idname = "rpm.pywebview_missing_dialog"
     bl_label = "pywebview Required"
     bl_options = {'INTERNAL'}
-    
+
     _timer = None
-    
+
     def execute(self, context):
         return {'FINISHED'}
-    
+
     def modal(self, context, event):
         if event.type == 'TIMER':
             # Check if installation completed
@@ -138,52 +137,54 @@ class RPM_OT_PywebviewMissingDialog(bpy.types.Operator):
                 if self._completion_countdown <= 0:
                     self.cancel(context)
                     return {'FINISHED'}
-            
+
             # Force UI redraw to update status
             context.area.tag_redraw() if context.area else None
             return {'PASS_THROUGH'}
-        
+
         return {'PASS_THROUGH'}
-    
+
     def invoke(self, context, event):
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.5, window=context.window)
         wm.modal_handler_add(self)
         return wm.invoke_props_dialog(self, width=450)
-    
+
     def cancel(self, context):
         wm = context.window_manager
         if self._timer:
             wm.event_timer_remove(self._timer)
-    
+
     def draw(self, context):
         layout = self.layout
         wm = context.window_manager
-        
+
         # Header
         box = layout.box()
         col = box.column(align=True)
         col.label(text="Ready Player Me - pywebview Issue", icon='ERROR')
         col.separator()
         col.label(text="The pywebview package could not be loaded.")
-        col.label(text="Please try restarting Blender or reinstalling the extension.")
-        
+        col.label(
+            text="Please try restarting Blender or reinstalling the extension."
+        )
+
         layout.separator()
-        
+
         # Installation section
         install_box = layout.box()
         col = install_box.column(align=True)
-        
+
         installed = _is_pywebview_available()
-        
+
         # Status indicator
         status_row = col.row(align=True)
         status_row.label(text="pywebview Status:", icon='DOT')
-        status_row.label(text="Installed" if installed else "Not Installed", 
+        status_row.label(text="Installed" if installed else "Not Installed",
                         icon='CHECKMARK' if installed else 'CANCEL')
-        
+
         col.separator()
-        
+
         # Install button and status
         if wm.rpm_dep_install_running:
             col.label(text="Installing pywebview... Please wait.", icon='TIME')
@@ -199,23 +200,25 @@ class RPM_OT_PywebviewMissingDialog(bpy.types.Operator):
         else:
             row = col.row()
             row.scale_y = 1.5
-            row.operator(RPM_OT_InstallDependenciesModal.bl_idname, 
+            row.operator(RPM_OT_InstallDependenciesModal.bl_idname,
                         text="Install pywebview", icon='IMPORT')
-            
+
             if wm.rpm_dep_install_msg:
                 col.separator()
                 msg_box = col.box()
                 msg_box.scale_y = 0.8
                 msg_box.label(text=wm.rpm_dep_install_msg[:200], icon='INFO')
-        
+
         layout.separator()
-        
+
         # Help text
         help_box = layout.box()
         help_col = help_box.column(align=True)
         help_col.label(text="Note:", icon='INFO')
         help_col.label(text="pywebview is bundled with this extension.")
-        help_col.label(text="If issues persist, reinstall the extension from Preferences.")
+        help_col.label(
+            text="If issues persist, reinstall the extension from Preferences."
+        )
 
 class RPM_OT_OpenUIWebview(bpy.types.Operator):
     """Open Ready Player Me UI in webview"""
@@ -223,47 +226,53 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
     bl_label = "RPM WebviewUI"
     bl_description = "Import Ready Player Me avatars"
     bl_options = {'REGISTER', 'INTERNAL'}
-    
+
     @classmethod
     def poll(cls, context):
         """Only enable if pywebview is available"""
         is_available = _is_pywebview_available()
         # Set description based on availability
         if not is_available:
-            cls.bl_description = "pywebview could not be loaded. Try restarting Blender or reinstalling the extension."
+            cls.bl_description = (
+                "pywebview could not be loaded. "
+                "Try restarting Blender or reinstalling the extension."
+            )
         else:
             cls.bl_description = "Import Ready Player Me avatars"
         return is_available
-    
+
     _timer = None
     _webview_process = None
     _ui_window = None
-    
+
     def invoke(self, context, event):
         """Handle invocation - show dialog if pywebview is missing"""
         if not _is_pywebview_available():
             # Show dialog with install option
             bpy.ops.rpm.pywebview_missing_dialog('INVOKE_DEFAULT')
-            self.report({'WARNING'}, "pywebview could not be loaded - please restart Blender")
+            self.report(
+                {'WARNING'},
+                "pywebview could not be loaded - please restart Blender"
+            )
             return {'CANCELLED'}
         return self.execute(context)
-    
+
     def modal(self, context, event):
         if event.type == 'TIMER':
             # Check if webview is still running
             if self._webview_process and self._webview_process.poll() is not None:
                 self.cancel(context)
                 return {'CANCELLED'}
-            
+
             # Check for download requests
             addon_dir = os.path.dirname(__file__)
             req_file = os.path.join(addon_dir, 'rpm_download_request.json')
             if os.path.exists(req_file):
                 try:
-                    with open(req_file, 'r', encoding='utf-8') as f:
+                    with open(req_file, encoding='utf-8') as f:
                         options = json.load(f)
                     os.remove(req_file)
-                    
+
                     # Trigger import
                     url = options.get('url', '')
                     if url:
@@ -284,7 +293,7 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
             prefs_req = os.path.join(addon_dir, 'rpm_prefs_request.json')
             if os.path.exists(prefs_req):
                 try:
-                    with open(prefs_req, 'r', encoding='utf-8') as f:
+                    with open(prefs_req, encoding='utf-8') as f:
                         data = json.load(f)
                     os.remove(prefs_req)
                     if isinstance(data, dict) and data.get('type') == 'save_credentials':
@@ -305,7 +314,8 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
                         p.avatar_items.clear()
                         print('RPM: Logged out - cleared credentials and avatars')
                         # Clear the shared avatars temp file if it exists
-                        if getattr(self, '_avatars_tmp_path', None) and os.path.exists(self._avatars_tmp_path):
+                        if (getattr(self, '_avatars_tmp_path', None)
+                                and os.path.exists(self._avatars_tmp_path)):
                             try:
                                 with open(self._avatars_tmp_path, 'w', encoding='utf-8') as f:
                                     json.dump([], f)
@@ -323,7 +333,7 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
             avatar_upd = os.path.join(addon_dir, 'rpm_avatar_update.json')
             if os.path.exists(avatar_upd):
                 try:
-                    with open(avatar_upd, 'r', encoding='utf-8') as f:
+                    with open(avatar_upd, encoding='utf-8') as f:
                         data = json.load(f)
                     os.remove(avatar_upd)
                     if isinstance(data, dict) and data.get('type') == 'avatar_update':
@@ -339,13 +349,20 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
                             p.scraped_avatars_json = json.dumps(items)
                         except Exception:
                             p.scraped_avatars_json = ''
-                        print(f'RPM: Updated avatar_items in AddonPreferences: {len(p.avatar_items)}')
+                        print(
+                            f'RPM: Updated avatar_items in AddonPreferences: '
+                            f'{len(p.avatar_items)}'
+                        )
                         # Maintain shared avatars file if exists
                         try:
                             if getattr(self, '_avatars_tmp_path', None):
                                 tmp_items = []
                                 for it in p.avatar_items:
-                                    tmp_items.append({'glb_url': it.glb_url, 'thumb_url': it.thumb_url, 'avatar_id': it.avatar_id})
+                                    tmp_items.append({
+                                        'glb_url': it.glb_url,
+                                        'thumb_url': it.thumb_url,
+                                        'avatar_id': it.avatar_id
+                                    })
                                 with open(self._avatars_tmp_path, 'w', encoding='utf-8') as f:
                                     json.dump(tmp_items, f)
                         except Exception as ee:
@@ -358,54 +375,67 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
                             print('RPM: Could not save user preferences', se)
                 except Exception as e:
                     print('RPM: Failed to process avatar update', e)
-        
+
         if event.type == 'ESC':
             self.cancel(context)
             return {'CANCELLED'}
-        
+
         return {'PASS_THROUGH'}
-    
+
     def execute(self, context):
         # Check pywebview - if called directly via Python
         if not _is_pywebview_available():
-            self.report({'ERROR'}, "pywebview not available. Please restart Blender or reinstall the extension.")
+            self.report(
+                {'ERROR'},
+                "pywebview not available. "
+                "Please restart Blender or reinstall the extension."
+            )
             print("RPM: pywebview could not be loaded from bundled wheels.")
-            print("RPM: Try restarting Blender or reinstalling the extension from Preferences.")
+            print(
+                "RPM: Try restarting Blender or reinstalling the extension "
+                "from Preferences."
+            )
             return {'CANCELLED'}
-        
+
         try:
             # Get HTML path
             addon_dir = os.path.dirname(__file__)
             html_path = os.path.join(addon_dir, 'rpm_ui.html')
-            
+
             if not os.path.exists(html_path):
                 self.report({'ERROR'}, f"UI file not found: {html_path}")
                 return {'CANCELLED'}
-            
+
             prefs = context.preferences.addons[__name__].preferences
-            
+
             # Prepare avatars temp file for UI to read current list
             try:
-                fd, avatars_tmp = tempfile.mkstemp(prefix='rpm_avatars_', suffix='.json')
+                fd, avatars_tmp = tempfile.mkstemp(
+                    prefix='rpm_avatars_', suffix='.json'
+                )
                 os.close(fd)
                 self._avatars_tmp_path = avatars_tmp
                 items = []
                 for it in prefs.avatar_items:
-                    items.append({'glb_url': it.glb_url, 'thumb_url': it.thumb_url, 'avatar_id': it.avatar_id})
+                    items.append({
+                        'glb_url': it.glb_url,
+                        'thumb_url': it.thumb_url,
+                        'avatar_id': it.avatar_id
+                    })
                 with open(avatars_tmp, 'w', encoding='utf-8') as f:
                     json.dump(items, f)
             except Exception as e:
                 print(f"RPM: Failed to prepare avatars temp file: {e}")
-            
+
             # Start webview in subprocess using Blender's Python
             helper_path = os.path.join(addon_dir, 'rpm_ui_webview.py')
             # Use Blender's Python executable which has access to bundled wheels
             cmd = sys.executable
-            
+
             if not cmd:
                 self.report({'ERROR'}, "Could not find Python executable")
                 return {'CANCELLED'}
-            
+
             # Set env vars
             env = os.environ.copy()
             env['RPM_HTML_PATH'] = html_path
@@ -417,7 +447,8 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
             env['RPM_PREFS_EMAIL'] = prefs.login_email or ''
             env['RPM_PREFS_PASSWORD'] = prefs.login_password or ''
             env['RPM_DEV_MODE'] = '1' if prefs.dev_mode else '0'
-            # UI defaults: use ReadyPlayerMeImporter operator defaults (single source of truth)
+            # UI defaults: use ReadyPlayerMeImporter operator defaults
+            # (single source of truth)
             dq, dt, da, de, ds = 'high', '1', '1', '1', '1024'
             env['RPM_DEFAULT_QUALITY'] = dq
             env['RPM_DEFAULT_TPOSE'] = dt
@@ -426,7 +457,7 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
             env['RPM_DEFAULT_ATLAS_SIZE'] = ds
             if getattr(self, '_avatars_tmp_path', None):
                 env['RPM_AVATARS_PATH'] = self._avatars_tmp_path
-            
+
             self._webview_process = subprocess.Popen(
                 [cmd, helper_path],
                 env=env,
@@ -447,25 +478,33 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
                 except Exception:
                     pass
             try:
-                t_out = threading.Thread(target=_forward_stream, args=(self._webview_process.stdout, 'RPM UI> '), daemon=True)
-                t_err = threading.Thread(target=_forward_stream, args=(self._webview_process.stderr, 'RPM UI ERR> '), daemon=True)
+                t_out = threading.Thread(
+                    target=_forward_stream,
+                    args=(self._webview_process.stdout, 'RPM UI> '),
+                    daemon=True
+                )
+                t_err = threading.Thread(
+                    target=_forward_stream,
+                    args=(self._webview_process.stderr, 'RPM UI ERR> '),
+                    daemon=True
+                )
                 t_out.start()
                 t_err.start()
             except Exception:
                 pass
-            
+
             # Start modal timer
             wm = context.window_manager
             self._timer = wm.event_timer_add(0.1, window=context.window)
             wm.modal_handler_add(self)
-            
+
             print("RPM: UI webview started")
             return {'RUNNING_MODAL'}
-            
+
         except Exception as e:
             self.report({'ERROR'}, f"Failed to start UI webview: {e}")
             return {'CANCELLED'}
-    
+
     def cancel(self, context):
         wm = context.window_manager
         if self._timer:
@@ -473,11 +512,12 @@ class RPM_OT_OpenUIWebview(bpy.types.Operator):
         if self._webview_process:
             try:
                 self._webview_process.terminate()
-            except:
+            except Exception:
                 pass
         print("RPM: UI webview closed")
         try:
-            if getattr(self, '_avatars_tmp_path', None) and os.path.exists(self._avatars_tmp_path):
+            if (getattr(self, '_avatars_tmp_path', None)
+                    and os.path.exists(self._avatars_tmp_path)):
                 os.remove(self._avatars_tmp_path)
         except Exception:
             pass
@@ -546,7 +586,7 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
         if self.model_url:
             return self.download_and_import_model(context)
         return {'FINISHED'}
-    
+
     def apply_pose_as_basis(context, aobj=None):
         if aobj is None:
             aobj = context.active_object
@@ -572,15 +612,18 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
 
     def download_and_import_model(self, context):
         original_dir_path = os.path.join(os.path.dirname(bpy.path.abspath(bpy.data.filepath)), "gltf-DL")
-        
+
         downloads_path = str(Path.home() / "Downloads")
         fallback_dir_path = os.path.join(downloads_path, "gltf-DL")
-        
+
         try:
             os.makedirs(original_dir_path, exist_ok=True)
             dir_path = original_dir_path
         except PermissionError:
-            print("Permission denied for original directory, using fallback directory in Downloads.")
+            print(
+                "Permission denied for original directory, "
+                "using fallback directory in Downloads."
+            )
             os.makedirs(fallback_dir_path, exist_ok=True)
             dir_path = fallback_dir_path
 
@@ -602,7 +645,7 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
             qs.pop('textureAtlas', None)
         new_query = urllib.parse.urlencode(qs, doseq=True)
         url = urllib.parse.urlunparse(parsed._replace(query=new_query))
-        
+
         filename = os.path.join(dir_path, os.path.basename(url).split("?")[0])
         try:
             urllib.request.urlretrieve(url, filename)
@@ -611,7 +654,7 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
             print(f"Failed to download file: {e}")
             self.report({'ERROR'}, f"Failed to download file: {e}  ||  (not all sizes + quality combinations are supported)")
             return {'CANCELLED'}
-        
+
         bpy.ops.object.select_all(action='DESELECT')
 
         bpy.ops.import_scene.gltf(filepath=filename)
@@ -624,7 +667,7 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
         armature.data.show_bone_custom_shapes = False
 
         child_meshes = [obj for obj in armature.children if obj.type == 'MESH']
-        
+
         if len(child_meshes) > 1:
             bpy.ops.object.select_all(action='DESELECT')
             for mesh in child_meshes:
@@ -652,12 +695,15 @@ class ReadyPlayerMeImporter(bpy.types.Operator):
             bpy.ops.pose.armature_apply(selected=False)
 
         return {'FINISHED'}
-    
+
 
 def menu_func_import(self, context):
     print(f"RPM: menu_func_import called. PYWEBVIEW_OK={PYWEBVIEW_OK}")
-    # Operator will be automatically disabled via poll() if pywebview is not available
-    self.layout.operator(RPM_OT_OpenUIWebview.bl_idname, text="Ready Player Me")
+    # Operator will be automatically disabled via poll()
+    # if pywebview is not available
+    self.layout.operator(
+        RPM_OT_OpenUIWebview.bl_idname, text="Ready Player Me"
+    )
 
 
 def register():
@@ -686,7 +732,7 @@ def unregister():
         _backup_prefs_to_config()
     except Exception as e:
         print(f'RPM: Error backing up preferences: {e}')
-    
+
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.utils.unregister_class(RPM_OT_InstallDependenciesModal)
     bpy.utils.unregister_class(ReadyPlayerMePreferences)
@@ -740,7 +786,7 @@ class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
         name="Scraped Avatars JSON",
         default=""
     )
-    
+
     avatar_items: bpy.props.CollectionProperty(
         type=RPM_AvatarItem,
         name="Avatar Items"
@@ -763,11 +809,14 @@ class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
     def draw(self, context):
         layout = self.layout
         installed = _is_pywebview_available()
-        
+
         # Dependencies status
         deps = layout.box()
         r = deps.row(align=True)
-        r.label(text="pywebview (bundled)", icon=('CHECKMARK' if installed else 'CANCEL'))
+        r.label(
+            text="pywebview (bundled)",
+            icon=('CHECKMARK' if installed else 'CANCEL')
+        )
         if not installed:
             r = deps.row()
             r.label(text="Not loaded - try restarting Blender", icon='ERROR')
@@ -775,7 +824,7 @@ class ReadyPlayerMePreferences(bpy.types.AddonPreferences):
         box = layout.box()
         box.prop(self, 'login_email')
         box.prop(self, 'login_password')
-        
+
         dev_box = layout.box()
         dev_box.prop(self, 'dev_mode')
         if self.dev_mode:
@@ -795,7 +844,10 @@ class RPM_OT_InstallDependenciesModal(bpy.types.Operator):
         wm = context.window_manager
         installed = _is_pywebview_available()
         if installed:
-            self.report({'INFO'}, "pywebview is already available from bundled wheels.")
+            self.report(
+                {'INFO'},
+                "pywebview is already available from bundled wheels."
+            )
             wm.rpm_dep_install_msg = "pywebview is bundled with this extension."
             return {'CANCELLED'}
         # Wheels should be installed automatically by Blender

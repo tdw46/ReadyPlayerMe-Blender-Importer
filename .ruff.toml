@@ -1,0 +1,12 @@
+# Ruff configuration for Blender addon
+line-length = 88
+
+[lint]
+ignore = [
+    "N801",  # Invalid class name (Blender uses specific naming conventions)
+    "N802",  # Invalid function name (Blender uses specific naming conventions)
+    "N999",  # Invalid module name (Blender extension names use underscores)
+]
+
+[lint.per-file-ignores]
+"__init__.py" = ["E501"]  # Allow long lines in some cases for readability
