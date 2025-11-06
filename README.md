@@ -28,8 +28,8 @@ Import ReadyPlayerMe avatars directly into Blender with a modern webview-based U
 ## Requirements
 
 - **Blender 4.5.0 or later**
-- **Python 3.x** installed on your system (for pywebview dependency)
-- **pywebview** Python package (can be installed via addon preferences)
+  
+pywebview is bundled with the extension; no separate installation is required.
 
 ## Installation
 
@@ -53,17 +53,7 @@ Import ReadyPlayerMe avatars directly into Blender with a modern webview-based U
 
 ## Setup
 
-### Installing pywebview
-
-The addon requires `pywebview` to display the ReadyPlayerMe interface:
-
-1. Open Blender Preferences (**Edit > Preferences**)
-2. Go to **Add-ons** and find "ReadyPlayerMe Blender Importer"
-3. Expand the addon preferences
-4. Click **Install Required Packages** if pywebview is not installed
-5. Wait for installation to complete
-
-> **Note:** This installs pywebview to your system Python, not Blender's bundled Python.
+No additional setup is required. The webview runtime is provided by the extension.
 
 ## Usage
 
@@ -104,15 +94,9 @@ This extension requires:
 
 ## Troubleshooting
 
-### pywebview not installing
-
-- Ensure Python 3.x is installed on your system
-- Try installing manually: `pip install --user pywebview`
-- Check that pip is available: `python -m pip --version`
-
 ### Webview window not opening
 
-- Verify pywebview is installed (check addon preferences)
+- pywebview is bundled with this extension; try restarting Blender
 - On Windows, Edge WebView2 runtime may be required
 - Check Blender console for error messages
 
