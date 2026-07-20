@@ -747,7 +747,8 @@ def unregister():
         pass
     global preview_col
     try:
-        if preview_col:
+        # Empty preview collections are falsey but still own Blender resources.
+        if preview_col is not None:
             previews.remove(preview_col)
             preview_col = None
     except Exception:
